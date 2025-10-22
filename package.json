@@ -9,11 +9,17 @@
     "deploy": "wrangler deploy",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": ["hono", "cloudflare", "workers", "typescript"],
+  "keywords": [
+    "hono",
+    "cloudflare",
+    "workers",
+    "typescript"
+  ],
   "author": "",
   "license": "ISC",
   "description": "A simple Hono backend configured for Cloudflare Workers",
   "dependencies": {
+    "@hono/swagger-ui": "^0.5.2",
     "hono": "^4.10.2"
   },
   "devDependencies": {
