@@ -1,7 +1,8 @@
-name = "hono-1"
+name = "hono-cloudflare-backend"
 main = "src/index.ts"
-compatibility_date = "2024-01-01"
+compatibility_date = "2024-10-22"
 compatibility_flags = ["nodejs_compat"]
+account_id = "fcd079bec6f835db7cba62fe47adc34c"
 
 [build]
 command = "npm run build"
