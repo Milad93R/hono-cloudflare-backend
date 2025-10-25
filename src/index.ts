@@ -440,13 +440,26 @@ app.get('/api/healthchecker', async (c) => {
       console.log(`Health check at ${elapsed}ms (crossed ${currentInterval * 15}s boundary)`)
       try {
         const response = await fetch(healthUrl)
-        const data = await response.json()
-        results.push({
-          time: elapsed,
-          status: 'success',
-          response: data
-        })
+        console.log(`Health check response status: ${response.status}`)
+        
+        if (!response.ok) {
+          const text = await response.text()
+          console.error(`Health check failed: ${response.status} - ${text}`)
+          results.push({
+            time: elapsed,
+            status: 'error',
+            error: `HTTP ${response.status}: ${text.substring(0, 100)}`
+          })
+        } else {
+          const data = await response.json()
+          results.push({
+            time: elapsed,
+            status: 'success',
+            response: data
+          })
+        }
       } catch (error) {
+        console.error(`Health check exception:`, error)
         results.push({
           time: elapsed,
           status: 'error',
@@ -461,13 +474,26 @@ app.get('/api/healthchecker', async (c) => {
   console.log('Final health check at 45s')
   try {
     const response = await fetch(healthUrl)
-    const data = await response.json()
-    results.push({
-      time: 45000,
-      status: 'success',
-      response: data
-    })
+    console.log(`Final health check response status: ${response.status}`)
+    
+    if (!response.ok) {
+      const text = await response.text()
+      console.error(`Final health check failed: ${response.status} - ${text}`)
+      results.push({
+        time: 45000,
+        status: 'error',
+        error: `HTTP ${response.status}: ${text.substring(0, 100)}`
+      })
+    } else {
+      const data = await response.json()
+      results.push({
+        time: 45000,
+        status: 'success',
+        response: data
+      })
+    }
   } catch (error) {
+    console.error(`Final health check exception:`, error)
     results.push({
       time: 45000,
       status: 'error',
