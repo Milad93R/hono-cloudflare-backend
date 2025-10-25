@@ -7,15 +7,9 @@ account_id = "fcd079bec6f835db7cba62fe47adc34c"
 [build]
 command = "npm run build"
 
-[[migrations]]
-tag = "v2"
-deleted_classes = ["MetricsCollector"]
-
 # Environment variables
 [vars]
 CLOUDFLARE_ACCOUNT_ID = "fcd079bec6f835db7cba62fe47adc34c"
-# Note: CLOUDFLARE_API_TOKEN should be set as a secret, not in vars
-# Use: wrangler secret put CLOUDFLARE_API_TOKEN
 
 # KV namespaces (optional)
 # [[kv_namespaces]]

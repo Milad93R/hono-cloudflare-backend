@@ -17,8 +17,6 @@ interface RequestMetrics {
 // Environment bindings type
 type Bindings = {
   ANALYTICS?: AnalyticsEngineDataset
-  CLOUDFLARE_API_TOKEN?: string
-  CLOUDFLARE_ACCOUNT_ID?: string
 }
 
 const app = new Hono<{ Bindings: Bindings }>()
@@ -380,42 +378,6 @@ app.post('/api/echo', async (c) => {
     echo: body,
     method: c.req.method,
     timestamp: new Date().toISOString()
-  })
-})
-
-// Monitoring stats - Direct link to Cloudflare Dashboard
-// Note: Fetching analytics via API within a worker can cause timeouts due to CPU limits
-// The dashboard provides instant, comprehensive analytics
-app.get('/api/monitoring/stats', (c) => {
-  const accountId = c.env?.CLOUDFLARE_ACCOUNT_ID || 'fcd079bec6f835db7cba62fe47adc34c'
-  
-  return c.json({
-    message: 'Worker Monitoring - Real-time analytics from Cloudflare',
-    status: 'operational',
-    dashboardUrl: `https://dash.cloudflare.com/${accountId}/workers/services/view/hono-cloudflare-backend/production/metrics`,
-    analytics: {
-      available_in_dashboard: [
-        'Total requests (last 24h, 7d, 30d)',
-        'Request duration percentiles (p50, p75, p90, p99)',
-        'Error rate and status codes breakdown',
-        'CPU time usage per request',
-        'Requests by country/region',
-        'Real-time request logs',
-        'Bandwidth usage',
-        'Subrequest statistics'
-      ],
-      note: 'All metrics are updated in real-time and available instantly in the dashboard'
-    },
-    alternative_access: {
-      wrangler_cli: 'Run `wrangler tail` for real-time logs',
-      api_docs: 'https://developers.cloudflare.com/analytics/graphql-api/',
-      note: 'GraphQL Analytics API is available but queries can be slow when called from within a worker'
-    },
-    worker_info: {
-      name: 'hono-cloudflare-backend',
-      account_id: accountId,
-      deployed: true
-    }
   })
 })
 
