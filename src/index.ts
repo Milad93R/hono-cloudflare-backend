@@ -30,6 +30,46 @@ type Variables = {
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
+// Decorator middleware to include captured logs in response when X-Debug-Secret is provided
+const withDebugLogs = async (c: any, next: any) => {
+  await next()
+  
+  // Check if debug mode is enabled
+  const debugSecret = c.env?.DEBUG_SECRET
+  const providedSecret = c.req.header('X-Debug-Secret')
+  const shouldIncludeLogs = debugSecret && providedSecret === debugSecret
+  
+  if (shouldIncludeLogs) {
+    const capturedLogs = c.get('capturedLogs')
+    
+    if (capturedLogs && capturedLogs.length > 0) {
+      // Get the original response
+      const originalResponse = c.res
+      
+      if (originalResponse.headers.get('content-type')?.includes('application/json')) {
+        try {
+          const originalBody = await originalResponse.json()
+          
+          // Add debug logs to the response
+          const enhancedBody = {
+            ...originalBody,
+            debug: {
+              ...(originalBody.debug || {}),
+              logs: capturedLogs
+            }
+          }
+          
+          // Return new response with logs
+          return c.json(enhancedBody, originalResponse.status)
+        } catch (e) {
+          // If parsing fails, return original response
+          return originalResponse
+        }
+      }
+    }
+  }
+}
+
 // Log capture middleware - intercepts console logs when debug is enabled
 app.use('*', async (c, next) => {
   const debugSecret = c.env?.DEBUG_SECRET
@@ -407,7 +447,7 @@ app.get('/health', (c) => {
 })
 
 // Test endpoint to trigger an error (for testing error logging)
-app.get('/api/test/error', (c) => {
+app.get('/api/test/error', withDebugLogs, (c) => {
   console.log('Starting error test endpoint')
   console.debug('Debug: Processing request for', c.req.path)
   console.info('Info: User agent is', c.req.header('User-Agent'))
@@ -416,7 +456,7 @@ app.get('/api/test/error', (c) => {
 })
 
 // Health checker endpoint - runs the 45s health check cycle
-app.get('/api/healthchecker', async (c) => {
+app.get('/api/healthchecker', withDebugLogs, async (c) => {
   console.log('Starting health checker cycle')
   const results: Array<{ time: number; status: string; response?: any; error?: string }> = []
   const startTime = Date.now()

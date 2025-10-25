@@ -1,0 +1,45 @@
+{
+  "error": "Internal Server Error",
+  "message": "This is a test error for monitoring purposes",
+  "timestamp": "2025-10-25T12:24:11.494Z",
+  "path": "/api/test/error",
+  "method": "GET",
+  "debug": {
+    "stack": "Error: This is a test error for monitoring purposes\n    at index.js:23:467\n    at a (index.js:1:12959)\n    ...",
+    "headers": {
+      "accept": "*/*",
+      "user-agent": "curl/8.4.0",
+      "x-debug-secret": "2728810e1c212fff21b353de2cdb5b272fdd489cbd4824b330148c9808ad3af9"
+    },
+    "userAgent": "curl/8.4.0",
+    "ip": "87.106.63.105",
+    "country": "GB",
+    "logs": [
+      {
+        "level": "log",
+        "message": "Starting error test endpoint",
+        "timestamp": "2025-10-25T12:24:11.494Z"
+      },
+      {
+        "level": "debug",
+        "message": "Debug: Processing request for /api/test/error",
+        "timestamp": "2025-10-25T12:24:11.494Z"
+      },
+      {
+        "level": "info",
+        "message": "Info: User agent is curl/8.4.0",
+        "timestamp": "2025-10-25T12:24:11.494Z"
+      },
+      {
+        "level": "warn",
+        "message": "Warning: About to throw test error",
+        "timestamp": "2025-10-25T12:24:11.494Z"
+      },
+      {
+        "level": "error",
+        "message": "API_ERROR: {...}",
+        "timestamp": "2025-10-25T12:24:11.494Z"
+      }
+    ]
+  }
+}

@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Debug Headers</title>
+    <style>
+        body { font-family: monospace; padding: 20px; }
+        button { padding: 10px 20px; margin: 10px; font-size: 16px; }
+        pre { background: #f4f4f4; padding: 15px; border-radius: 5px; overflow-x: auto; }
+        .result { margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <h1>Test Debug Headers Feature</h1>
+    
+    <h2>Test 1: Without Debug Headers</h2>
+    <button onclick="testWithoutDebug()">Test Error Endpoint (No Debug)</button>
+    <div id="result1" class="result"></div>
+    
+    <h2>Test 2: With X-Debug-Errors Header</h2>
+    <button onclick="testWithDebug()">Test Error Endpoint (With Debug)</button>
+    <div id="result2" class="result"></div>
+    
+    <script>
+        const API_URL = 'https://hono-cloudflare-backend.mrashidikhah32.workers.dev/api/test/error';
+        
+        async function testWithoutDebug() {
+            const resultDiv = document.getElementById('result1');
+            resultDiv.innerHTML = '<p>Loading...</p>';
+            
+            try {
+                const response = await fetch(API_URL);
+                const data = await response.json();
+                resultDiv.innerHTML = `
+                    <h3>Response (Status: ${response.status}):</h3>
+                    <pre>${JSON.stringify(data, null, 2)}</pre>
+                `;
+            } catch (error) {
+                resultDiv.innerHTML = `<p style="color: red;">Error: ${error.message}</p>`;
+            }
+        }
+        
+        async function testWithDebug() {
+            const resultDiv = document.getElementById('result2');
+            resultDiv.innerHTML = '<p>Loading...</p>';
+            
+            try {
+                const response = await fetch(API_URL, {
+                    headers: {
+                        'X-Debug-Errors': 'true'
+                    }
+                });
+                const data = await response.json();
+                resultDiv.innerHTML = `
+                    <h3>Response (Status: ${response.status}):</h3>
+                    <pre>${JSON.stringify(data, null, 2)}</pre>
+                `;
+            } catch (error) {
+                resultDiv.innerHTML = `<p style="color: red;">Error: ${error.message}</p>`;
+            }
+        }
+    </script>
+</body>
+</html>
