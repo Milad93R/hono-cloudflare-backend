@@ -9,7 +9,7 @@ export const withDebugLogs = async (c: Context<{ Bindings: Bindings; Variables: 
   const shouldIncludeLogs = debugSecret && providedSecret === debugSecret
   
   // Store flag in context so handler knows to include logs
-  c.set('shouldIncludeLogs', shouldIncludeLogs)
+  ;(c as any).set('shouldIncludeLogs', shouldIncludeLogs)
   
   await next()
 }
@@ -53,7 +53,7 @@ export const logCapture = async (c: Context<{ Bindings: Bindings; Variables: Var
     }
     
     // Store logs in context for later retrieval
-    c.set('capturedLogs', logs)
+    ;(c as any).set('capturedLogs', logs)
     
     try {
       await next()
