@@ -18,6 +18,9 @@ interface RequestMetrics {
 type Bindings = {
   ANALYTICS?: AnalyticsEngineDataset
   DEBUG_SECRET?: string
+  API_KEY?: string
+  SWAGGER_USERNAME?: string
+  SWAGGER_PASSWORD?: string
 }
 
 // Context variables type
@@ -81,6 +84,29 @@ app.use('*', async (c, next) => {
   } else {
     await next()
   }
+})
+
+// API Key authentication middleware (skip for /health, /docs, /openapi.json)
+app.use('*', async (c, next) => {
+  const path = c.req.path
+  
+  // Skip auth for health check, swagger UI, and openapi spec
+  if (path === '/health' || path === '/docs' || path === '/openapi.json') {
+    return next()
+  }
+  
+  const apiKey = c.env?.API_KEY
+  const providedKey = c.req.header('X-API-Key')
+  
+  if (!apiKey || providedKey !== apiKey) {
+    return c.json({
+      error: 'Unauthorized',
+      message: 'Invalid or missing API key',
+      timestamp: new Date().toISOString()
+    }, 401)
+  }
+  
+  await next()
 })
 
 // Monitoring middleware
@@ -195,15 +221,21 @@ const openAPISpec = {
   },
   components: {
     securitySchemes: {
+      ApiKey: {
+        type: 'apiKey',
+        in: 'header',
+        name: 'X-API-Key',
+        description: 'API key required for all endpoints except /health'
+      },
       DebugSecret: {
         type: 'apiKey',
         in: 'header',
         name: 'X-Debug-Secret',
-        description: 'Secret token that enables detailed error logging in responses. Leave unset for standard responses.'
+        description: 'Optional secret token that enables detailed error logging in responses. Leave unset for standard responses.'
       }
     }
   },
-  security: [{}, { DebugSecret: [] }],
+  security: [{ ApiKey: [] }, { DebugSecret: [] }],
   servers: [
     {
       url: '/',
@@ -223,6 +255,7 @@ const openAPISpec = {
       get: {
         summary: 'Health check',
         description: 'Returns the health status of the service',
+        security: [],
         responses: {
           '200': {
             description: 'Service is healthy',
@@ -272,8 +305,30 @@ app.get('/openapi.json', (c) => {
   return c.json(openAPISpec)
 })
 
-// Swagger UI with favicon
+// Swagger UI with favicon and basic auth
 app.get('/docs', (c) => {
+  const swaggerUsername = c.env?.SWAGGER_USERNAME
+  const swaggerPassword = c.env?.SWAGGER_PASSWORD
+  
+  // Check basic auth
+  const authHeader = c.req.header('Authorization')
+  
+  if (!authHeader || !authHeader.startsWith('Basic ')) {
+    return c.text('Unauthorized', 401, {
+      'WWW-Authenticate': 'Basic realm="Swagger Documentation"'
+    })
+  }
+  
+  const base64Credentials = authHeader.substring(6)
+  const credentials = atob(base64Credentials)
+  const [username, password] = credentials.split(':')
+  
+  if (username !== swaggerUsername || password !== swaggerPassword) {
+    return c.text('Unauthorized', 401, {
+      'WWW-Authenticate': 'Basic realm="Swagger Documentation"'
+    })
+  }
+  
   return c.html(`<!DOCTYPE html>
     <html lang="en">
       <head>
