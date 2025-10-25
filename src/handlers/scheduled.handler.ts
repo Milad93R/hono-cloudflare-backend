@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
-import { Bindings } from '../types'
+import { Bindings, Variables } from '../types'
 
-export const createScheduledHandler = (app: Hono<{ Bindings: Bindings }>) => {
+export const createScheduledHandler = (app: Hono<{ Bindings: Bindings; Variables: Variables }>) => {
   return async (event: ScheduledEvent, env: Bindings, ctx: ExecutionContext) => {
     console.log('Cron job triggered at:', new Date(event.scheduledTime).toISOString())
     

@@ -1,10 +1,10 @@
 import { Hono } from 'hono'
-import { Bindings, HealthCheckResult, HealthCheckerConfig } from '../types'
+import { Bindings, Variables, HealthCheckResult, HealthCheckerConfig } from '../types'
 
 export class HealthService {
-  private app: Hono<{ Bindings: Bindings }>
+  private app: Hono<{ Bindings: Bindings; Variables: Variables }>
 
-  constructor(app: Hono<{ Bindings: Bindings }>) {
+  constructor(app: Hono<{ Bindings: Bindings; Variables: Variables }>) {
     this.app = app
   }
 
