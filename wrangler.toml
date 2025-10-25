@@ -7,6 +7,10 @@ account_id = "fcd079bec6f835db7cba62fe47adc34c"
 [build]
 command = "npm run build"
 
+[[migrations]]
+tag = "v2"
+deleted_classes = ["MetricsCollector"]
+
 # Environment variables (optional)
 # [vars]
 # MY_VAR = "production"
