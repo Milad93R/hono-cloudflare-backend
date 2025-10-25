@@ -285,8 +285,32 @@ app.get('/openapi.json', (c) => {
   return c.json(openAPISpec)
 })
 
-// Swagger UI
-app.get('/docs', swaggerUI({ url: '/openapi.json' }))
+// Swagger UI with favicon
+app.get('/docs', (c) => {
+  return c.html(`<!DOCTYPE html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="description" content="SwaggerUI" />
+        <title>SwaggerUI</title>
+        <link rel="icon" type="image/png" sizes="32x32" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist/favicon-32x32.png" />
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist/swagger-ui.css" />
+      </head>
+      <body>
+        <div id="swagger-ui"></div>
+        <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist/swagger-ui-bundle.js" crossorigin="anonymous"></script>
+        <script>
+          window.onload = () => {
+            window.ui = SwaggerUIBundle({
+              dom_id: '#swagger-ui',
+              url: '/openapi.json',
+            })
+          }
+        </script>
+      </body>
+    </html>`)
+})
 
 // Basic route
 app.get('/', (c) => {
