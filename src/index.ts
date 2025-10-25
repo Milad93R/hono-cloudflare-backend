@@ -424,6 +424,8 @@ app.get('/api/healthchecker', async (c) => {
   // Helper function to check health internally
   const checkHealth = async () => {
     try {
+      console.log('Preparing to call /health endpoint')
+      const requestStart = Date.now()
       // Create a new request to /health endpoint
       const healthRequest = new Request('http://internal/health', {
         method: 'GET'
@@ -431,7 +433,10 @@ app.get('/api/healthchecker', async (c) => {
       
       // Call the app internally without going through network
       const response = await app.fetch(healthRequest, c.env)
+      console.log('Received response from /health with status:', response.status)
       const data = await response.json()
+      console.log('Parsed /health response body:', JSON.stringify(data))
+      console.log('Total /health call duration (ms):', Date.now() - requestStart)
       
       return {
         status: 'success' as const,
