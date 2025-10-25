@@ -26,48 +26,22 @@ type Bindings = {
 // Context variables type
 type Variables = {
   capturedLogs?: Array<{ level: string; message: string; timestamp: string }>
+  shouldIncludeLogs?: boolean
 }
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
 // Decorator middleware to include captured logs in response when X-Debug-Secret is provided
 const withDebugLogs = async (c: any, next: any) => {
-  await next()
-  
-  // Check if debug mode is enabled
+  // Check if debug mode is enabled before executing handler
   const debugSecret = c.env?.DEBUG_SECRET
   const providedSecret = c.req.header('X-Debug-Secret')
   const shouldIncludeLogs = debugSecret && providedSecret === debugSecret
   
-  if (shouldIncludeLogs) {
-    const capturedLogs = c.get('capturedLogs')
-    
-    if (capturedLogs && capturedLogs.length > 0) {
-      // Get the original response
-      const originalResponse = c.res
-      
-      if (originalResponse.headers.get('content-type')?.includes('application/json')) {
-        try {
-          const originalBody = await originalResponse.json()
-          
-          // Add debug logs to the response
-          const enhancedBody = {
-            ...originalBody,
-            debug: {
-              ...(originalBody.debug || {}),
-              logs: capturedLogs
-            }
-          }
-          
-          // Return new response with logs
-          return c.json(enhancedBody, originalResponse.status)
-        } catch (e) {
-          // If parsing fails, return original response
-          return originalResponse
-        }
-      }
-    }
-  }
+  // Store flag in context so handler knows to include logs
+  c.set('shouldIncludeLogs', shouldIncludeLogs)
+  
+  await next()
 }
 
 // Log capture middleware - intercepts console logs when debug is enabled
@@ -518,12 +492,26 @@ app.get('/api/healthchecker', withDebugLogs, async (c) => {
   console.log(`Final health check result:`, JSON.stringify(finalResult))
   results.push({ time: 45000, ...finalResult })
   
-  return c.json({
+  // Build response
+  const response: any = {
     message: 'Health checker cycle completed',
     duration: '45 seconds',
     totalChecks: results.length,
     results: results
-  })
+  }
+  
+  // Include logs if debug mode is enabled
+  const shouldIncludeLogs = c.get('shouldIncludeLogs')
+  if (shouldIncludeLogs) {
+    const capturedLogs = c.get('capturedLogs')
+    if (capturedLogs && capturedLogs.length > 0) {
+      response.debug = {
+        logs: capturedLogs
+      }
+    }
+  }
+  
+  return c.json(response)
 })
 
 // 404 handler
