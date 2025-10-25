@@ -127,8 +127,19 @@ const openAPISpec = {
   info: {
     title: 'Hono Cloudflare Workers API',
     version: '1.0.0',
-    description: 'A simple API built with Hono and deployed on Cloudflare Workers',
+    description: 'A simple API built with Hono and deployed on Cloudflare Workers.\n\nOptional secret header: include `X-Debug-Secret` with the configured token to receive detailed error responses.',
   },
+  components: {
+    securitySchemes: {
+      DebugSecret: {
+        type: 'apiKey',
+        in: 'header',
+        name: 'X-Debug-Secret',
+        description: 'Secret token that enables detailed error logging in responses. Leave unset for standard responses.'
+      }
+    }
+  },
+  security: [{}, { DebugSecret: [] }],
   servers: [
     {
       url: '/',
@@ -257,16 +268,7 @@ const openAPISpec = {
     '/api/test/error': {
       get: {
         summary: 'Test error endpoint',
-        description: 'Triggers a test error for monitoring and logging purposes. Use X-Debug-Secret header with the secret token for detailed error logs.',
-        parameters: [
-          {
-            name: 'X-Debug-Secret',
-            in: 'header',
-            required: false,
-            schema: { type: 'string' },
-            description: 'Secret token to enable detailed error logging with stack traces',
-          },
-        ],
+        description: 'Triggers a test error for monitoring and logging purposes. Provide the optional X-Debug-Secret header to receive detailed error information.',
         responses: {
           '500': {
             description: 'Test error response',
