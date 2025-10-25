@@ -1,5 +1,5 @@
 import { Context } from 'hono'
-import { Bindings } from '../types'
+import { Bindings, Variables } from '../types'
 import { openAPISpec } from '../config/openapi.config'
 
 export class DocsController {
@@ -7,7 +7,7 @@ export class DocsController {
    * GET /openapi.json
    * Returns OpenAPI specification
    */
-  async getOpenAPISpec(c: Context<{ Bindings: Bindings }>) {
+  async getOpenAPISpec(c: Context<{ Bindings: Bindings; Variables: Variables }>) {
     return c.json(openAPISpec)
   }
 
@@ -15,7 +15,7 @@ export class DocsController {
    * GET /docs
    * Returns Swagger UI HTML
    */
-  async getSwaggerUI(c: Context<{ Bindings: Bindings }>) {
+  async getSwaggerUI(c: Context<{ Bindings: Bindings; Variables: Variables }>) {
     return c.html(`<!DOCTYPE html>
     <html lang="en">
       <head>

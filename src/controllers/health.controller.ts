@@ -11,7 +11,7 @@ export class HealthController {
    * GET /health
    * Returns health status
    */
-  async getHealth(c: Context<{ Bindings: Bindings }>) {
+  async getHealth(c: Context<{ Bindings: Bindings; Variables: Variables }>) {
     return c.json({ 
       status: 'healthy',
       service: 'hono-cloudflare-worker'
