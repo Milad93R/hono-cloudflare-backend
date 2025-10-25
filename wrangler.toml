@@ -12,6 +12,10 @@ bindings = [
   { name = "METRICS_COLLECTOR", class_name = "MetricsCollector" }
 ]
 
+[[migrations]]
+tag = "v1"
+new_classes = ["MetricsCollector"]
+
 # Environment variables (optional)
 # [vars]
 # MY_VAR = "production"
