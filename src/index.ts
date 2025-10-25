@@ -20,7 +20,68 @@ type Bindings = {
   DEBUG_SECRET?: string
 }
 
-const app = new Hono<{ Bindings: Bindings }>()
+// Context variables type
+type Variables = {
+  capturedLogs?: Array<{ level: string; message: string; timestamp: string }>
+}
+
+const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
+
+// Log capture middleware - intercepts console logs when debug is enabled
+app.use('*', async (c, next) => {
+  const debugSecret = c.env?.DEBUG_SECRET
+  const providedSecret = c.req.header('X-Debug-Secret')
+  const shouldCaptureLogs = debugSecret && providedSecret === debugSecret
+  
+  if (shouldCaptureLogs) {
+    const logs: Array<{ level: string; message: string; timestamp: string }> = []
+    
+    // Store original console methods
+    const originalLog = console.log
+    const originalError = console.error
+    const originalWarn = console.warn
+    const originalInfo = console.info
+    const originalDebug = console.debug
+    
+    // Override console methods to capture logs
+    console.log = (...args: any[]) => {
+      logs.push({ level: 'log', message: args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' '), timestamp: new Date().toISOString() })
+      originalLog.apply(console, args)
+    }
+    console.error = (...args: any[]) => {
+      logs.push({ level: 'error', message: args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' '), timestamp: new Date().toISOString() })
+      originalError.apply(console, args)
+    }
+    console.warn = (...args: any[]) => {
+      logs.push({ level: 'warn', message: args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' '), timestamp: new Date().toISOString() })
+      originalWarn.apply(console, args)
+    }
+    console.info = (...args: any[]) => {
+      logs.push({ level: 'info', message: args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' '), timestamp: new Date().toISOString() })
+      originalInfo.apply(console, args)
+    }
+    console.debug = (...args: any[]) => {
+      logs.push({ level: 'debug', message: args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' '), timestamp: new Date().toISOString() })
+      originalDebug.apply(console, args)
+    }
+    
+    // Store logs in context for later retrieval
+    c.set('capturedLogs', logs)
+    
+    try {
+      await next()
+    } finally {
+      // Restore original console methods
+      console.log = originalLog
+      console.error = originalError
+      console.warn = originalWarn
+      console.info = originalInfo
+      console.debug = originalDebug
+    }
+  } else {
+    await next()
+  }
+})
 
 // Monitoring middleware
 app.use('*', async (c, next) => {
@@ -97,6 +158,8 @@ app.onError((err, c) => {
   
   // Return detailed error response if debug headers are set
   if (shouldLogDetails) {
+    const capturedLogs = c.get('capturedLogs') as Array<{ level: string; message: string; timestamp: string }> | undefined
+    
     return c.json({
       error: 'Internal Server Error',
       message: errorInfo.error,
@@ -108,7 +171,8 @@ app.onError((err, c) => {
         headers: errorInfo.headers,
         userAgent: errorInfo.userAgent,
         ip: errorInfo.ip,
-        country: errorInfo.country
+        country: errorInfo.country,
+        logs: capturedLogs || []
       }
     }, 500)
   }
@@ -155,29 +219,6 @@ const openAPISpec = {
     },
   ],
   paths: {
-    '/': {
-      get: {
-        summary: 'Welcome endpoint',
-        description: 'Returns a welcome message with timestamp',
-        responses: {
-          '200': {
-            description: 'Successful response',
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  properties: {
-                    message: { type: 'string' },
-                    timestamp: { type: 'string', format: 'date-time' },
-                    docs: { type: 'string' }
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-    },
     '/health': {
       get: {
         summary: 'Health check',
@@ -192,71 +233,6 @@ const openAPISpec = {
                   properties: {
                     status: { type: 'string' },
                     service: { type: 'string' },
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-    },
-    '/api/hello/{name}': {
-      get: {
-        summary: 'Personalized greeting',
-        description: 'Returns a personalized greeting message',
-        parameters: [
-          {
-            name: 'name',
-            in: 'path',
-            required: true,
-            schema: { type: 'string' },
-            description: 'Name to greet',
-          },
-        ],
-        responses: {
-          '200': {
-            description: 'Successful response',
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  properties: {
-                    message: { type: 'string' },
-                    path: { type: 'string' },
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-    },
-    '/api/echo': {
-      post: {
-        summary: 'Echo endpoint',
-        description: 'Echoes back the request body',
-        requestBody: {
-          required: true,
-          content: {
-            'application/json': {
-              schema: {
-                type: 'object',
-                additionalProperties: true,
-              },
-            },
-          },
-        },
-        responses: {
-          '200': {
-            description: 'Successful response',
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  properties: {
-                    echo: { type: 'object' },
-                    method: { type: 'string' },
-                    timestamp: { type: 'string', format: 'date-time' },
                   },
                 },
               },
@@ -340,27 +316,12 @@ app.get('/health', (c) => {
   })
 })
 
-// API route with parameter
-app.get('/api/hello/:name', (c) => {
-  const name = c.req.param('name')
-  return c.json({ 
-    message: `Hello, ${name}!`,
-    path: c.req.path
-  })
-})
-
-// POST endpoint example
-app.post('/api/echo', async (c) => {
-  const body = await c.req.json()
-  return c.json({
-    echo: body,
-    method: c.req.method,
-    timestamp: new Date().toISOString()
-  })
-})
-
 // Test endpoint to trigger an error (for testing error logging)
 app.get('/api/test/error', (c) => {
+  console.log('Starting error test endpoint')
+  console.debug('Debug: Processing request for', c.req.path)
+  console.info('Info: User agent is', c.req.header('User-Agent'))
+  console.warn('Warning: About to throw test error')
   throw new Error('This is a test error for monitoring purposes')
 })
 
