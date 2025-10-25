@@ -391,7 +391,7 @@ app.get('/api/monitoring/stats', async (c) => {
   if (!apiToken) {
     return c.json({
       error: 'CLOUDFLARE_API_TOKEN not configured',
-      message: 'To fetch real-time analytics, add CLOUDFLARE_API_TOKEN to your wrangler.toml [vars] section or environment variables',
+      message: 'To fetch real-time analytics, add CLOUDFLARE_API_TOKEN as a secret',
       dashboardUrl: `https://dash.cloudflare.com/${accountId}/workers/services/view/hono-cloudflare-backend/production/metrics`,
       note: 'Visit the dashboard URL above to view comprehensive analytics'
     }, 503)
@@ -407,7 +407,7 @@ app.get('/api/monitoring/stats', async (c) => {
         viewer {
           accounts(filter: { accountTag: "${accountId}" }) {
             workersInvocationsAdaptive(
-              limit: 10000
+              limit: 1000
               filter: {
                 datetime_geq: "${yesterday.toISOString()}"
                 datetime_leq: "${now.toISOString()}"
@@ -421,8 +421,6 @@ app.get('/api/monitoring/stats', async (c) => {
               }
               quantiles {
                 cpuTimeP50
-                cpuTimeP75
-                cpuTimeP90
                 cpuTimeP99
               }
             }
@@ -431,14 +429,21 @@ app.get('/api/monitoring/stats', async (c) => {
       }
     `
 
+    // Add timeout to prevent hanging
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 10000) // 10 second timeout
+
     const response = await fetch('https://api.cloudflare.com/client/v4/graphql', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiToken}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ query })
+      body: JSON.stringify({ query }),
+      signal: controller.signal
     })
+    
+    clearTimeout(timeoutId)
 
     if (!response.ok) {
       const errorText = await response.text()
@@ -490,10 +495,8 @@ app.get('/api/monitoring/stats', async (c) => {
         errorRate,
         subrequests: analytics.sum?.subrequests || 0,
         cpuTime: {
-          p50: analytics.quantiles?.cpuTimeP50 || 0,
-          p75: analytics.quantiles?.cpuTimeP75 || 0,
-          p90: analytics.quantiles?.cpuTimeP90 || 0,
-          p99: analytics.quantiles?.cpuTimeP99 || 0
+          p50: Math.round((analytics.quantiles?.cpuTimeP50 || 0) * 1000) / 1000,
+          p99: Math.round((analytics.quantiles?.cpuTimeP99 || 0) * 1000) / 1000
         }
       },
       dashboardUrl: `https://dash.cloudflare.com/${accountId}/workers/services/view/hono-cloudflare-backend/production/metrics`,
@@ -501,10 +504,22 @@ app.get('/api/monitoring/stats', async (c) => {
     })
   } catch (error) {
     console.error('Analytics fetch error:', error)
+    
+    // Check if it's a timeout
+    if (error instanceof Error && error.name === 'AbortError') {
+      return c.json({
+        error: 'Request timeout',
+        message: 'The analytics query took too long. This might be due to high data volume.',
+        dashboardUrl: `https://dash.cloudflare.com/${accountId}/workers/services/view/hono-cloudflare-backend/production/metrics`,
+        suggestion: 'Visit the dashboard for instant analytics'
+      }, 504)
+    }
+    
     return c.json({
       error: 'Failed to fetch analytics',
       message: error instanceof Error ? error.message : 'Unknown error',
-      dashboardUrl: `https://dash.cloudflare.com/${accountId}/workers/services/view/hono-cloudflare-backend/production/metrics`
+      dashboardUrl: `https://dash.cloudflare.com/${accountId}/workers/services/view/hono-cloudflare-backend/production/metrics`,
+      suggestion: 'Check that your API token has Analytics:Read permission'
     }, 500)
   }
 })
