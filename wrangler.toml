@@ -14,7 +14,7 @@ bindings = [
 
 [[migrations]]
 tag = "v1"
-new_classes = ["MetricsCollector"]
+new_sqlite_classes = ["MetricsCollector"]
 
 # Environment variables (optional)
 # [vars]
