@@ -417,12 +417,34 @@ app.get('/api/test/error', (c) => {
 
 // Health checker endpoint - runs the 45s health check cycle
 app.get('/api/healthchecker', async (c) => {
-  const baseUrl = c.req.header('host') ? `https://${c.req.header('host')}` : 'http://localhost:8787'
-  const healthUrl = `${baseUrl}/health`
-  
   console.log('Starting health checker cycle')
   const results: Array<{ time: number; status: string; response?: any; error?: string }> = []
   const startTime = Date.now()
+  
+  // Helper function to check health internally
+  const checkHealth = async () => {
+    try {
+      // Create a new request to /health endpoint
+      const healthRequest = new Request('http://internal/health', {
+        method: 'GET'
+      })
+      
+      // Call the app internally without going through network
+      const response = await app.fetch(healthRequest, c.env)
+      const data = await response.json()
+      
+      return {
+        status: 'success' as const,
+        response: data
+      }
+    } catch (error) {
+      console.error(`Health check exception:`, error)
+      return {
+        status: 'error' as const,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      }
+    }
+  }
   
   // Track elapsed time and last check time
   let lastCheckAt = 0
@@ -438,68 +460,16 @@ app.get('/api/healthchecker', async (c) => {
     
     if (currentInterval > lastInterval && elapsed < 45000) {
       console.log(`Health check at ${elapsed}ms (crossed ${currentInterval * 15}s boundary)`)
-      try {
-        const response = await fetch(healthUrl)
-        console.log(`Health check response status: ${response.status}`)
-        
-        if (!response.ok) {
-          const text = await response.text()
-          console.error(`Health check failed: ${response.status} - ${text}`)
-          results.push({
-            time: elapsed,
-            status: 'error',
-            error: `HTTP ${response.status}: ${text.substring(0, 100)}`
-          })
-        } else {
-          const data = await response.json()
-          results.push({
-            time: elapsed,
-            status: 'success',
-            response: data
-          })
-        }
-      } catch (error) {
-        console.error(`Health check exception:`, error)
-        results.push({
-          time: elapsed,
-          status: 'error',
-          error: error instanceof Error ? error.message : 'Unknown error'
-        })
-      }
+      const result = await checkHealth()
+      results.push({ time: elapsed, ...result })
       lastCheckAt = elapsed
     }
   }
   
   // Final check after 45 seconds
   console.log('Final health check at 45s')
-  try {
-    const response = await fetch(healthUrl)
-    console.log(`Final health check response status: ${response.status}`)
-    
-    if (!response.ok) {
-      const text = await response.text()
-      console.error(`Final health check failed: ${response.status} - ${text}`)
-      results.push({
-        time: 45000,
-        status: 'error',
-        error: `HTTP ${response.status}: ${text.substring(0, 100)}`
-      })
-    } else {
-      const data = await response.json()
-      results.push({
-        time: 45000,
-        status: 'success',
-        response: data
-      })
-    }
-  } catch (error) {
-    console.error(`Final health check exception:`, error)
-    results.push({
-      time: 45000,
-      status: 'error',
-      error: error instanceof Error ? error.message : 'Unknown error'
-    })
-  }
+  const finalResult = await checkHealth()
+  results.push({ time: 45000, ...finalResult })
   
   return c.json({
     message: 'Health checker cycle completed',
