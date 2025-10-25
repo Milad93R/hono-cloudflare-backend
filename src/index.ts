@@ -96,7 +96,25 @@ app.use('*', async (c, next) => {
     // Always log basic error info
     console.error('API_ERROR:', JSON.stringify(errorInfo))
     
-    // Return error response
+    // Return detailed error response if debug headers are set
+    if (shouldLogDetails) {
+      return c.json({
+        error: 'Internal Server Error',
+        message: errorInfo.error,
+        timestamp: errorInfo.timestamp,
+        path: errorInfo.path,
+        method: errorInfo.method,
+        debug: {
+          stack: errorInfo.stack,
+          headers: errorInfo.headers,
+          userAgent: errorInfo.userAgent,
+          ip: errorInfo.ip,
+          country: errorInfo.country
+        }
+      }, 500)
+    }
+    
+    // Return basic error response
     return c.json({
       error: 'Internal Server Error',
       timestamp: errorInfo.timestamp,
