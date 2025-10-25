@@ -238,63 +238,6 @@ const openAPISpec = {
         },
       },
     },
-    '/api/monitoring/stats': {
-      get: {
-        summary: 'Worker monitoring statistics',
-        description: 'Returns comprehensive monitoring data including request counts, error rates, and performance metrics',
-        responses: {
-          '200': {
-            description: 'Monitoring statistics',
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  properties: {
-                    message: { type: 'string' },
-                    data: {
-                      type: 'object',
-                      properties: {
-                        periodStart: { type: 'string', format: 'date-time' },
-                        lastUpdated: { type: 'string', format: 'date-time' },
-                        totalRequests: { type: 'integer' },
-                        errorCount: { type: 'integer' },
-                        errorRate: { type: 'string' },
-                        averageResponseTime: { type: 'integer' },
-                        requestsByPath: {
-                          type: 'object',
-                          additionalProperties: { type: 'integer' }
-                        },
-                        errorsByPath: {
-                          type: 'object',
-                          additionalProperties: { type: 'integer' }
-                        },
-                        statusCodes: {
-                          type: 'object',
-                          additionalProperties: { type: 'integer' }
-                        },
-                        topCountries: {
-                          type: 'object',
-                          additionalProperties: { type: 'integer' }
-                        },
-                        responseTimePercentiles: {
-                          type: 'object',
-                          properties: {
-                            p50: { type: 'integer' },
-                            p90: { type: 'integer' },
-                            p95: { type: 'integer' },
-                            p99: { type: 'integer' }
-                          }
-                        }
-                      }
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-    },
     '/api/test/error': {
       get: {
         summary: 'Test error endpoint',
