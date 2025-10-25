@@ -37,3 +37,7 @@ CLOUDFLARE_ACCOUNT_ID = "fcd079bec6f835db7cba62fe47adc34c"
 # This helps with log aggregation and analysis
 [observability]
 enabled = true
+
+# Cron triggers
+[triggers]
+crons = ["* * * * *"]  # Run every minute

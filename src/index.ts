@@ -388,4 +388,73 @@ app.notFound((c) => {
   }, 404)
 })
 
-export default app
+// Cron handler - runs every minute
+const scheduled = async (event: ScheduledEvent, env: Bindings, ctx: ExecutionContext) => {
+  console.log('Cron job started at:', new Date().toISOString())
+  
+  const workerUrl = 'https://hono-cloudflare-backend.mrashidikhah32.workers.dev'
+  const healthEndpoint = `${workerUrl}/health`
+  const apiKey = env.API_KEY
+  
+  let elapsedTime = 0
+  let lastHealthCheckAt = 0
+  const healthCheckInterval = 15000 // 15 seconds
+  const totalDuration = 45000 // 45 seconds
+  const checkInterval = 5000 // 5 seconds
+  
+  const healthChecks: Array<{ time: number; response: any; status: number }> = []
+  
+  // Helper function to call health endpoint
+  const callHealth = async (timeElapsed: number) => {
+    try {
+      const response = await fetch(healthEndpoint)
+      const data = await response.json()
+      healthChecks.push({
+        time: timeElapsed,
+        response: data,
+        status: response.status
+      })
+      console.log(`[${timeElapsed}ms] Health check:`, data)
+      return data
+    } catch (error) {
+      console.error(`[${timeElapsed}ms] Health check failed:`, error)
+      healthChecks.push({
+        time: timeElapsed,
+        response: { error: error instanceof Error ? error.message : 'Unknown error' },
+        status: 500
+      })
+      return null
+    }
+  }
+  
+  // Start the monitoring loop
+  const startTime = Date.now()
+  
+  while (elapsedTime < totalDuration) {
+    // Check if we've crossed a 15-second interval
+    const currentInterval = Math.floor(elapsedTime / healthCheckInterval)
+    const lastInterval = Math.floor(lastHealthCheckAt / healthCheckInterval)
+    
+    if (currentInterval > lastInterval) {
+      // We crossed a 15-second boundary
+      await callHealth(elapsedTime)
+      lastHealthCheckAt = elapsedTime
+    }
+    
+    // Wait 5 seconds before next check
+    await new Promise(resolve => setTimeout(resolve, checkInterval))
+    elapsedTime = Date.now() - startTime
+  }
+  
+  // Final health check after 45 seconds
+  const finalResponse = await callHealth(elapsedTime)
+  
+  console.log('Cron job completed. Total health checks:', healthChecks.length)
+  console.log('Final response:', finalResponse)
+  console.log('All health checks:', JSON.stringify(healthChecks, null, 2))
+}
+
+export default {
+  fetch: app.fetch,
+  scheduled
+}
