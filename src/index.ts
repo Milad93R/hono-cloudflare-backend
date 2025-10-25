@@ -398,50 +398,21 @@ app.get('/api/monitoring/stats', async (c) => {
   }
 
   try {
-    // Calculate time range (last 24 hours)
-    const now = new Date()
-    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000)
-    
-    const query = `
-      query {
-        viewer {
-          accounts(filter: { accountTag: "${accountId}" }) {
-            workersInvocationsAdaptive(
-              limit: 1000
-              filter: {
-                datetime_geq: "${yesterday.toISOString()}"
-                datetime_leq: "${now.toISOString()}"
-                scriptName: "hono-cloudflare-backend"
-              }
-            ) {
-              sum {
-                requests
-                errors
-                subrequests
-              }
-              quantiles {
-                cpuTimeP50
-                cpuTimeP99
-              }
-            }
-          }
-        }
-      }
-    `
-
-    // Add timeout to prevent hanging
+    // Use simpler REST API to get worker scripts list (faster than GraphQL)
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 10000) // 10 second timeout
+    const timeoutId = setTimeout(() => controller.abort(), 5000) // 5 second timeout
 
-    const response = await fetch('https://api.cloudflare.com/client/v4/graphql', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ query }),
-      signal: controller.signal
-    })
+    const response = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/scripts/hono-cloudflare-backend`,
+      {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${apiToken}`,
+          'Content-Type': 'application/json',
+        },
+        signal: controller.signal
+      }
+    )
     
     clearTimeout(timeoutId)
 
@@ -449,77 +420,66 @@ app.get('/api/monitoring/stats', async (c) => {
       const errorText = await response.text()
       console.error('Cloudflare API Error:', response.status, errorText)
       return c.json({
-        error: 'Failed to fetch analytics from Cloudflare',
+        error: 'Failed to fetch worker info from Cloudflare',
         status: response.status,
         details: errorText,
-        dashboardUrl: `https://dash.cloudflare.com/${accountId}/workers/services/view/hono-cloudflare-backend/production/metrics`
+        dashboardUrl: `https://dash.cloudflare.com/${accountId}/workers/services/view/hono-cloudflare-backend/production/metrics`,
+        note: 'API token might need Workers Scripts:Read permission'
       }, 502)
     }
 
-    const data = await response.json() as any
+    const workerData = await response.json() as any
     
-    if (data.errors) {
-      console.error('GraphQL Errors:', JSON.stringify(data.errors))
+    if (!workerData.success) {
       return c.json({
-        error: 'GraphQL query failed',
-        details: data.errors,
+        error: 'API request failed',
+        details: workerData.errors || 'Unknown error',
         dashboardUrl: `https://dash.cloudflare.com/${accountId}/workers/services/view/hono-cloudflare-backend/production/metrics`
       }, 500)
     }
 
-    const analytics = data.data?.viewer?.accounts?.[0]?.workersInvocationsAdaptive
-    
-    if (!analytics) {
-      return c.json({
-        message: 'No analytics data available yet',
-        note: 'Analytics data may take a few minutes to appear after deployment',
-        dashboardUrl: `https://dash.cloudflare.com/${accountId}/workers/services/view/hono-cloudflare-backend/production/metrics`
-      })
-    }
-
-    const totalRequests = analytics.sum?.requests || 0
-    const totalErrors = analytics.sum?.errors || 0
-    const errorRate = totalRequests > 0 ? ((totalErrors / totalRequests) * 100).toFixed(2) + '%' : '0%'
-
+    // Return worker info and link to dashboard for full analytics
     return c.json({
-      message: 'Worker analytics from Cloudflare (last 24 hours)',
-      source: 'Cloudflare GraphQL Analytics API',
-      period: {
-        from: yesterday.toISOString(),
-        to: now.toISOString(),
-        duration: '24 hours'
+      message: 'Worker information retrieved from Cloudflare',
+      source: 'Cloudflare Workers API',
+      worker: {
+        id: workerData.result?.id || 'hono-cloudflare-backend',
+        created_on: workerData.result?.created_on || 'N/A',
+        modified_on: workerData.result?.modified_on || 'N/A',
+        etag: workerData.result?.etag || 'N/A'
       },
-      data: {
-        totalRequests,
-        totalErrors,
-        errorRate,
-        subrequests: analytics.sum?.subrequests || 0,
-        cpuTime: {
-          p50: Math.round((analytics.quantiles?.cpuTimeP50 || 0) * 1000) / 1000,
-          p99: Math.round((analytics.quantiles?.cpuTimeP99 || 0) * 1000) / 1000
-        }
+      analytics: {
+        note: 'Real-time request metrics are available in the Cloudflare Dashboard',
+        dashboardUrl: `https://dash.cloudflare.com/${accountId}/workers/services/view/hono-cloudflare-backend/production/metrics`,
+        available_metrics: [
+          'Total requests (last 24h, 7d, 30d)',
+          'Request duration percentiles (p50, p90, p99)',
+          'Error rate and status codes',
+          'CPU time usage',
+          'Requests by country',
+          'Real-time logs'
+        ]
       },
-      dashboardUrl: `https://dash.cloudflare.com/${accountId}/workers/services/view/hono-cloudflare-backend/production/metrics`,
-      note: 'For more detailed analytics including country breakdown and status codes, visit the dashboard'
+      note: 'GraphQL Analytics API queries can be slow. Visit the dashboard for instant, comprehensive analytics.'
     })
   } catch (error) {
-    console.error('Analytics fetch error:', error)
+    console.error('Worker API fetch error:', error)
     
     // Check if it's a timeout
     if (error instanceof Error && error.name === 'AbortError') {
       return c.json({
         error: 'Request timeout',
-        message: 'The analytics query took too long. This might be due to high data volume.',
+        message: 'The API request took too long.',
         dashboardUrl: `https://dash.cloudflare.com/${accountId}/workers/services/view/hono-cloudflare-backend/production/metrics`,
         suggestion: 'Visit the dashboard for instant analytics'
       }, 504)
     }
     
     return c.json({
-      error: 'Failed to fetch analytics',
+      error: 'Failed to fetch worker information',
       message: error instanceof Error ? error.message : 'Unknown error',
       dashboardUrl: `https://dash.cloudflare.com/${accountId}/workers/services/view/hono-cloudflare-backend/production/metrics`,
-      suggestion: 'Check that your API token has Analytics:Read permission'
+      suggestion: 'Check that your API token has Workers Scripts:Read permission'
     }, 500)
   }
 })
