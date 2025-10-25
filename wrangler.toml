@@ -26,3 +26,14 @@ command = "npm run build"
 # [[r2_buckets]]
 # binding = "MY_BUCKET"
 # bucket_name = "my-bucket"
+
+# Analytics Engine (for advanced monitoring)
+# Uncomment and configure when you want to use Analytics Engine
+# [[analytics_engine_datasets]]
+# binding = "ANALYTICS"
+# dataset = "worker_analytics"
+
+# Logpush configuration (optional)
+# This helps with log aggregation and analysis
+[observability]
+enabled = true

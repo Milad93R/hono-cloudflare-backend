@@ -1,7 +1,118 @@
 import { Hono } from 'hono'
 import { swaggerUI } from '@hono/swagger-ui'
 
-const app = new Hono()
+// Types for monitoring
+interface RequestMetrics {
+  timestamp: string
+  method: string
+  path: string
+  status: number
+  duration: number
+  userAgent?: string
+  ip?: string
+  country?: string
+  error?: string
+}
+
+interface MonitoringData {
+  totalRequests: number
+  errorCount: number
+  averageResponseTime: number
+  requestsByPath: Record<string, number>
+  errorsByPath: Record<string, number>
+  statusCodes: Record<string, number>
+}
+
+// Environment bindings type
+type Bindings = {
+  ANALYTICS?: AnalyticsEngineDataset
+}
+
+const app = new Hono<{ Bindings: Bindings }>()
+
+// Monitoring middleware
+app.use('*', async (c, next) => {
+  const startTime = Date.now()
+  const timestamp = new Date().toISOString()
+  
+  // Get request info
+  const method = c.req.method
+  const path = c.req.path
+  const userAgent = c.req.header('User-Agent')
+  const ip = c.req.header('CF-Connecting-IP') || c.req.header('X-Forwarded-For')
+  const country = c.req.header('CF-IPCountry')
+  
+  let status = 200
+  let error: string | undefined
+  
+  try {
+    await next()
+    status = c.res.status
+  } catch (err) {
+    status = 500
+    error = err instanceof Error ? err.message : 'Unknown error'
+    throw err
+  } finally {
+    const duration = Date.now() - startTime
+    
+    // Create metrics object
+    const metrics: RequestMetrics = {
+      timestamp,
+      method,
+      path,
+      status,
+      duration,
+      userAgent,
+      ip,
+      country,
+      error
+    }
+    
+    // Log metrics (this will appear in Cloudflare Workers logs)
+    console.log('REQUEST_METRICS:', JSON.stringify(metrics))
+    
+    // Store in Analytics Engine if available (optional)
+    if (c.env?.ANALYTICS) {
+      c.env.ANALYTICS.writeDataPoint({
+        blobs: [method, path, userAgent || '', country || ''],
+        doubles: [duration, status],
+        indexes: [timestamp]
+      })
+    }
+  }
+})
+
+// Error logging middleware with conditional detailed logging
+app.use('*', async (c, next) => {
+  try {
+    await next()
+  } catch (err) {
+    const shouldLogDetails = c.req.header('X-Debug-Errors') === 'true' || 
+                           c.req.header('X-Log-Errors') === 'true'
+    
+    const errorInfo = {
+      timestamp: new Date().toISOString(),
+      path: c.req.path,
+      method: c.req.method,
+      error: err instanceof Error ? err.message : 'Unknown error',
+      stack: shouldLogDetails && err instanceof Error ? err.stack : undefined,
+      headers: shouldLogDetails ? Object.fromEntries(c.req.raw.headers.entries()) : undefined,
+      userAgent: c.req.header('User-Agent'),
+      ip: c.req.header('CF-Connecting-IP'),
+      country: c.req.header('CF-IPCountry')
+    }
+    
+    // Always log basic error info
+    console.error('API_ERROR:', JSON.stringify(errorInfo))
+    
+    // Return error response
+    return c.json({
+      error: 'Internal Server Error',
+      timestamp: errorInfo.timestamp,
+      path: errorInfo.path
+    }, 500)
+  }
+})
 
 // OpenAPI specification
 const openAPISpec = {
@@ -12,6 +123,10 @@ const openAPISpec = {
     description: 'A simple API built with Hono and deployed on Cloudflare Workers',
   },
   servers: [
+    {
+      url: 'http://127.0.0.1:8787',
+      description: 'Local development server',
+    },
     {
       url: 'https://hono-cloudflare-backend.mrashidikhah32.workers.dev',
       description: 'Production server',
@@ -128,6 +243,82 @@ const openAPISpec = {
         },
       },
     },
+    '/api/monitoring/stats': {
+      get: {
+        summary: 'Worker monitoring statistics',
+        description: 'Returns comprehensive monitoring data including request counts, error rates, and performance metrics',
+        responses: {
+          '200': {
+            description: 'Monitoring statistics',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    message: { type: 'string' },
+                    data: {
+                      type: 'object',
+                      properties: {
+                        period: { type: 'string' },
+                        totalRequests: { type: 'number' },
+                        errorCount: { type: 'number' },
+                        errorRate: { type: 'string' },
+                        averageResponseTime: { type: 'number' },
+                        requestsByPath: { type: 'object' },
+                        errorsByPath: { type: 'object' },
+                        statusCodes: { type: 'object' },
+                        topCountries: { type: 'object' },
+                        responseTimePercentiles: { type: 'object' }
+                      }
+                    },
+                    note: { type: 'string' }
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/api/test/error': {
+      get: {
+        summary: 'Test error endpoint',
+        description: 'Triggers a test error for monitoring and logging purposes. Use X-Debug-Errors header for detailed error logs.',
+        parameters: [
+          {
+            name: 'X-Debug-Errors',
+            in: 'header',
+            required: false,
+            schema: { type: 'string', enum: ['true'] },
+            description: 'Set to "true" to enable detailed error logging',
+          },
+          {
+            name: 'X-Log-Errors',
+            in: 'header',
+            required: false,
+            schema: { type: 'string', enum: ['true'] },
+            description: 'Set to "true" to enable detailed error logging',
+          },
+        ],
+        responses: {
+          '500': {
+            description: 'Test error response',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    error: { type: 'string' },
+                    timestamp: { type: 'string', format: 'date-time' },
+                    path: { type: 'string' }
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
   },
 }
 
@@ -173,6 +364,58 @@ app.post('/api/echo', async (c) => {
     method: c.req.method,
     timestamp: new Date().toISOString()
   })
+})
+
+// Monitoring endpoint to view analytics
+app.get('/api/monitoring/stats', (c) => {
+  // This endpoint would typically query your analytics database
+  // For now, we'll return a sample response showing what data you can track
+  const sampleStats = {
+    period: 'current_month',
+    totalRequests: 15420,
+    errorCount: 23,
+    errorRate: '0.15%',
+    averageResponseTime: 145,
+    requestsByPath: {
+      '/': 8500,
+      '/api/hello/:name': 4200,
+      '/api/echo': 1800,
+      '/health': 920
+    },
+    errorsByPath: {
+      '/api/echo': 15,
+      '/api/hello/:name': 8
+    },
+    statusCodes: {
+      '200': 15200,
+      '404': 197,
+      '500': 23
+    },
+    topCountries: {
+      'US': 8500,
+      'GB': 2100,
+      'DE': 1800,
+      'FR': 1200,
+      'CA': 900
+    },
+    responseTimePercentiles: {
+      p50: 120,
+      p90: 280,
+      p95: 450,
+      p99: 850
+    }
+  }
+  
+  return c.json({
+    message: 'Worker monitoring statistics',
+    data: sampleStats,
+    note: 'This is sample data. Real data comes from Cloudflare Analytics Engine or logs analysis.'
+  })
+})
+
+// Test endpoint to trigger an error (for testing error logging)
+app.get('/api/test/error', (c) => {
+  throw new Error('This is a test error for monitoring purposes')
 })
 
 // 404 handler
