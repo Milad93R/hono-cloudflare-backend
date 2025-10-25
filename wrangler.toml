@@ -7,6 +7,10 @@ account_id = "fcd079bec6f835db7cba62fe47adc34c"
 [build]
 command = "npm run build"
 
+[[durable_objects]]
+binding = "METRICS_COLLECTOR"
+class_name = "MetricsCollector"
+
 # Environment variables (optional)
 # [vars]
 # MY_VAR = "production"

@@ -1,31 +1,12 @@
 import { Hono } from 'hono'
 import { swaggerUI } from '@hono/swagger-ui'
-
-// Types for monitoring
-interface RequestMetrics {
-  timestamp: string
-  method: string
-  path: string
-  status: number
-  duration: number
-  userAgent?: string
-  ip?: string
-  country?: string
-  error?: string
-}
-
-interface MonitoringData {
-  totalRequests: number
-  errorCount: number
-  averageResponseTime: number
-  requestsByPath: Record<string, number>
-  errorsByPath: Record<string, number>
-  statusCodes: Record<string, number>
-}
+import type { MonitoringData, RequestMetrics } from './metrics'
+export { MetricsCollector } from './metrics'
 
 // Environment bindings type
 type Bindings = {
   ANALYTICS?: AnalyticsEngineDataset
+  METRICS_COLLECTOR: DurableObjectNamespace
 }
 
 const app = new Hono<{ Bindings: Bindings }>()
@@ -78,6 +59,21 @@ app.use('*', async (c, next) => {
         doubles: [duration, status],
         indexes: [timestamp]
       })
+    }
+
+    // Persist metrics to Durable Object for aggregation
+    if (c.env?.METRICS_COLLECTOR) {
+      const id = c.env.METRICS_COLLECTOR.idFromName('global')
+      const stub = c.env.METRICS_COLLECTOR.get(id)
+      try {
+        await stub.fetch('https://metrics/record', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(metrics)
+        })
+      } catch (err) {
+        console.error('METRICS_RECORD_ERROR', err)
+      }
     }
   }
 })
@@ -263,19 +259,39 @@ const openAPISpec = {
                     data: {
                       type: 'object',
                       properties: {
-                        period: { type: 'string' },
-                        totalRequests: { type: 'number' },
-                        errorCount: { type: 'number' },
+                        periodStart: { type: 'string', format: 'date-time' },
+                        lastUpdated: { type: 'string', format: 'date-time' },
+                        totalRequests: { type: 'integer' },
+                        errorCount: { type: 'integer' },
                         errorRate: { type: 'string' },
-                        averageResponseTime: { type: 'number' },
-                        requestsByPath: { type: 'object' },
-                        errorsByPath: { type: 'object' },
-                        statusCodes: { type: 'object' },
-                        topCountries: { type: 'object' },
-                        responseTimePercentiles: { type: 'object' }
+                        averageResponseTime: { type: 'integer' },
+                        requestsByPath: {
+                          type: 'object',
+                          additionalProperties: { type: 'integer' }
+                        },
+                        errorsByPath: {
+                          type: 'object',
+                          additionalProperties: { type: 'integer' }
+                        },
+                        statusCodes: {
+                          type: 'object',
+                          additionalProperties: { type: 'integer' }
+                        },
+                        topCountries: {
+                          type: 'object',
+                          additionalProperties: { type: 'integer' }
+                        },
+                        responseTimePercentiles: {
+                          type: 'object',
+                          properties: {
+                            p50: { type: 'integer' },
+                            p90: { type: 'integer' },
+                            p95: { type: 'integer' },
+                            p99: { type: 'integer' }
+                          }
+                        }
                       }
                     },
-                    note: { type: 'string' }
                   },
                 },
               },
@@ -370,51 +386,39 @@ app.post('/api/echo', async (c) => {
   })
 })
 
-// Monitoring endpoint to view analytics
-app.get('/api/monitoring/stats', (c) => {
-  // This endpoint would typically query your analytics database
-  // For now, we'll return a sample response showing what data you can track
-  const sampleStats = {
-    period: 'current_month',
-    totalRequests: 15420,
-    errorCount: 23,
-    errorRate: '0.15%',
-    averageResponseTime: 145,
-    requestsByPath: {
-      '/': 8500,
-      '/api/hello/:name': 4200,
-      '/api/echo': 1800,
-      '/health': 920
-    },
-    errorsByPath: {
-      '/api/echo': 15,
-      '/api/hello/:name': 8
-    },
-    statusCodes: {
-      '200': 15200,
-      '404': 197,
-      '500': 23
-    },
-    topCountries: {
-      'US': 8500,
-      'GB': 2100,
-      'DE': 1800,
-      'FR': 1200,
-      'CA': 900
-    },
-    responseTimePercentiles: {
-      p50: 120,
-      p90: 280,
-      p95: 450,
-      p99: 850
-    }
+// Monitoring endpoint backed by Durable Object aggregation
+app.get('/api/monitoring/stats', async (c) => {
+  if (!c.env?.METRICS_COLLECTOR) {
+    return c.json({
+      message: 'Metrics collector not configured',
+      data: null
+    }, 503)
   }
-  
-  return c.json({
-    message: 'Worker monitoring statistics',
-    data: sampleStats,
-    note: 'This is sample data. Real data comes from Cloudflare Analytics Engine or logs analysis.'
-  })
+
+  try {
+    const id = c.env.METRICS_COLLECTOR.idFromName('global')
+    const stub = c.env.METRICS_COLLECTOR.get(id)
+    const res = await stub.fetch('https://metrics/stats')
+
+    if (!res.ok) {
+      const text = await res.text()
+      console.error('METRICS_STATS_ERROR', res.status, text)
+      return c.json({
+        message: 'Failed to retrieve metrics',
+        status: res.status,
+        details: text
+      }, 502)
+    }
+
+    const payload = (await res.json()) as { message: string; data: MonitoringData }
+    return c.json(payload)
+  } catch (err) {
+    console.error('METRICS_STATS_EXCEPTION', err)
+    return c.json({
+      message: 'Failed to retrieve metrics',
+      error: err instanceof Error ? err.message : 'Unknown error'
+    }, 500)
+  }
 })
 
 // Test endpoint to trigger an error (for testing error logging)
