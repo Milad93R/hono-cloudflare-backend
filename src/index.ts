@@ -297,6 +297,41 @@ const openAPISpec = {
         },
       },
     },
+    '/api/healthchecker': {
+      get: {
+        summary: 'Health checker cycle',
+        description: 'Runs a 45-second health check cycle. Checks /health endpoint every 15 seconds (at 15s, 30s, 45s). Checks every 5 seconds if a 15-second boundary has been crossed.',
+        responses: {
+          '200': {
+            description: 'Health checker cycle completed',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    message: { type: 'string' },
+                    duration: { type: 'string' },
+                    totalChecks: { type: 'integer' },
+                    results: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          time: { type: 'integer', description: 'Elapsed time in milliseconds' },
+                          status: { type: 'string', enum: ['success', 'error'] },
+                          response: { type: 'object' },
+                          error: { type: 'string' }
+                        }
+                      }
+                    }
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
   },
 }
 
@@ -380,6 +415,74 @@ app.get('/api/test/error', (c) => {
   throw new Error('This is a test error for monitoring purposes')
 })
 
+// Health checker endpoint - runs the 45s health check cycle
+app.get('/api/healthchecker', async (c) => {
+  const baseUrl = c.req.header('host') ? `https://${c.req.header('host')}` : 'http://localhost:8787'
+  const healthUrl = `${baseUrl}/health`
+  
+  console.log('Starting health checker cycle')
+  const results: Array<{ time: number; status: string; response?: any; error?: string }> = []
+  const startTime = Date.now()
+  
+  // Track elapsed time and last check time
+  let lastCheckAt = 0
+  let elapsed = 0
+  
+  while (elapsed < 45000) {
+    await new Promise(resolve => setTimeout(resolve, 5000)) // Wait 5 seconds
+    elapsed = Date.now() - startTime
+    
+    // Check if we've crossed a 15-second boundary
+    const currentInterval = Math.floor(elapsed / 15000)
+    const lastInterval = Math.floor(lastCheckAt / 15000)
+    
+    if (currentInterval > lastInterval && elapsed < 45000) {
+      console.log(`Health check at ${elapsed}ms (crossed ${currentInterval * 15}s boundary)`)
+      try {
+        const response = await fetch(healthUrl)
+        const data = await response.json()
+        results.push({
+          time: elapsed,
+          status: 'success',
+          response: data
+        })
+      } catch (error) {
+        results.push({
+          time: elapsed,
+          status: 'error',
+          error: error instanceof Error ? error.message : 'Unknown error'
+        })
+      }
+      lastCheckAt = elapsed
+    }
+  }
+  
+  // Final check after 45 seconds
+  console.log('Final health check at 45s')
+  try {
+    const response = await fetch(healthUrl)
+    const data = await response.json()
+    results.push({
+      time: 45000,
+      status: 'success',
+      response: data
+    })
+  } catch (error) {
+    results.push({
+      time: 45000,
+      status: 'error',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    })
+  }
+  
+  return c.json({
+    message: 'Health checker cycle completed',
+    duration: '45 seconds',
+    totalChecks: results.length,
+    results: results
+  })
+})
+
 // 404 handler
 app.notFound((c) => {
   return c.json({ 
@@ -388,70 +491,29 @@ app.notFound((c) => {
   }, 404)
 })
 
-// Cron handler - runs every minute
+// Scheduled handler for cron jobs
 const scheduled = async (event: ScheduledEvent, env: Bindings, ctx: ExecutionContext) => {
-  console.log('Cron job started at:', new Date().toISOString())
+  console.log('Cron job triggered at:', new Date(event.scheduledTime).toISOString())
   
-  const workerUrl = 'https://hono-cloudflare-backend.mrashidikhah32.workers.dev'
-  const healthEndpoint = `${workerUrl}/health`
-  const apiKey = env.API_KEY
-  
-  let elapsedTime = 0
-  let lastHealthCheckAt = 0
-  const healthCheckInterval = 15000 // 15 seconds
-  const totalDuration = 45000 // 45 seconds
-  const checkInterval = 5000 // 5 seconds
-  
-  const healthChecks: Array<{ time: number; response: any; status: number }> = []
-  
-  // Helper function to call health endpoint
-  const callHealth = async (timeElapsed: number) => {
-    try {
-      const response = await fetch(healthEndpoint)
-      const data = await response.json()
-      healthChecks.push({
-        time: timeElapsed,
-        response: data,
-        status: response.status
-      })
-      console.log(`[${timeElapsed}ms] Health check:`, data)
-      return data
-    } catch (error) {
-      console.error(`[${timeElapsed}ms] Health check failed:`, error)
-      healthChecks.push({
-        time: timeElapsed,
-        response: { error: error instanceof Error ? error.message : 'Unknown error' },
-        status: 500
-      })
-      return null
-    }
-  }
-  
-  // Start the monitoring loop
-  const startTime = Date.now()
-  
-  while (elapsedTime < totalDuration) {
-    // Check if we've crossed a 15-second interval
-    const currentInterval = Math.floor(elapsedTime / healthCheckInterval)
-    const lastInterval = Math.floor(lastHealthCheckAt / healthCheckInterval)
+  try {
+    // Determine the base URL for the worker
+    const workerUrl = `https://hono-cloudflare-backend.mrashidikhah32.workers.dev`
+    const healthCheckerUrl = `${workerUrl}/api/healthchecker`
     
-    if (currentInterval > lastInterval) {
-      // We crossed a 15-second boundary
-      await callHealth(elapsedTime)
-      lastHealthCheckAt = elapsedTime
-    }
+    console.log('Calling health checker endpoint:', healthCheckerUrl)
     
-    // Wait 5 seconds before next check
-    await new Promise(resolve => setTimeout(resolve, checkInterval))
-    elapsedTime = Date.now() - startTime
+    // Call the health checker endpoint
+    const response = await fetch(healthCheckerUrl, {
+      headers: {
+        'X-API-Key': env.API_KEY || ''
+      }
+    })
+    
+    const result = await response.json()
+    console.log('Health checker result:', JSON.stringify(result))
+  } catch (error) {
+    console.error('Cron job error:', error instanceof Error ? error.message : 'Unknown error')
   }
-  
-  // Final health check after 45 seconds
-  const finalResponse = await callHealth(elapsedTime)
-  
-  console.log('Cron job completed. Total health checks:', healthChecks.length)
-  console.log('Final response:', finalResponse)
-  console.log('All health checks:', JSON.stringify(healthChecks, null, 2))
 }
 
 export default {
