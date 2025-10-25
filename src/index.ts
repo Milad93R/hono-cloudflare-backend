@@ -124,12 +124,16 @@ const openAPISpec = {
   },
   servers: [
     {
-      url: 'http://127.0.0.1:8787',
-      description: 'Local development server',
+      url: '/',
+      description: 'Current deployment (relative URL)',
     },
     {
       url: 'https://hono-cloudflare-backend.mrashidikhah32.workers.dev',
       description: 'Production server',
+    },
+    {
+      url: 'http://127.0.0.1:8787',
+      description: 'Local development server',
     },
   ],
   paths: {
