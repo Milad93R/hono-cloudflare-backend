@@ -17,6 +17,7 @@ interface RequestMetrics {
 // Environment bindings type
 type Bindings = {
   ANALYTICS?: AnalyticsEngineDataset
+  DEBUG_SECRET?: string
 }
 
 const app = new Hono<{ Bindings: Bindings }>()
@@ -73,54 +74,51 @@ app.use('*', async (c, next) => {
   }
 })
 
-// Error logging middleware with conditional detailed logging
-app.use('*', async (c, next) => {
-  try {
-    await next()
-  } catch (err) {
-    const shouldLogDetails = c.req.header('X-Debug-Errors') === 'true' || 
-                           c.req.header('X-Log-Errors') === 'true'
-    
-    const errorInfo = {
-      timestamp: new Date().toISOString(),
-      path: c.req.path,
-      method: c.req.method,
-      error: err instanceof Error ? err.message : 'Unknown error',
-      stack: shouldLogDetails && err instanceof Error ? err.stack : undefined,
-      headers: shouldLogDetails ? Object.fromEntries(c.req.raw.headers.entries()) : undefined,
-      userAgent: c.req.header('User-Agent'),
-      ip: c.req.header('CF-Connecting-IP'),
-      country: c.req.header('CF-IPCountry')
-    }
-    
-    // Always log basic error info
-    console.error('API_ERROR:', JSON.stringify(errorInfo))
-    
-    // Return detailed error response if debug headers are set
-    if (shouldLogDetails) {
-      return c.json({
-        error: 'Internal Server Error',
-        message: errorInfo.error,
-        timestamp: errorInfo.timestamp,
-        path: errorInfo.path,
-        method: errorInfo.method,
-        debug: {
-          stack: errorInfo.stack,
-          headers: errorInfo.headers,
-          userAgent: errorInfo.userAgent,
-          ip: errorInfo.ip,
-          country: errorInfo.country
-        }
-      }, 500)
-    }
-    
-    // Return basic error response
+// Global error handler with conditional detailed logging
+app.onError((err, c) => {
+  const debugSecret = c.env?.DEBUG_SECRET
+  const providedSecret = c.req.header('X-Debug-Secret')
+  const shouldLogDetails = debugSecret && providedSecret === debugSecret
+  
+  const errorInfo = {
+    timestamp: new Date().toISOString(),
+    path: c.req.path,
+    method: c.req.method,
+    error: err instanceof Error ? err.message : 'Unknown error',
+    stack: shouldLogDetails && err instanceof Error ? err.stack : undefined,
+    headers: shouldLogDetails ? Object.fromEntries(c.req.raw.headers.entries()) : undefined,
+    userAgent: c.req.header('User-Agent'),
+    ip: c.req.header('CF-Connecting-IP'),
+    country: c.req.header('CF-IPCountry')
+  }
+  
+  // Always log basic error info
+  console.error('API_ERROR:', JSON.stringify(errorInfo))
+  
+  // Return detailed error response if debug headers are set
+  if (shouldLogDetails) {
     return c.json({
       error: 'Internal Server Error',
+      message: errorInfo.error,
       timestamp: errorInfo.timestamp,
-      path: errorInfo.path
+      path: errorInfo.path,
+      method: errorInfo.method,
+      debug: {
+        stack: errorInfo.stack,
+        headers: errorInfo.headers,
+        userAgent: errorInfo.userAgent,
+        ip: errorInfo.ip,
+        country: errorInfo.country
+      }
     }, 500)
   }
+  
+  // Return basic error response
+  return c.json({
+    error: 'Internal Server Error',
+    timestamp: errorInfo.timestamp,
+    path: errorInfo.path
+  }, 500)
 })
 
 // OpenAPI specification
@@ -259,21 +257,14 @@ const openAPISpec = {
     '/api/test/error': {
       get: {
         summary: 'Test error endpoint',
-        description: 'Triggers a test error for monitoring and logging purposes. Use X-Debug-Errors header for detailed error logs.',
+        description: 'Triggers a test error for monitoring and logging purposes. Use X-Debug-Secret header with the secret token for detailed error logs.',
         parameters: [
           {
-            name: 'X-Debug-Errors',
+            name: 'X-Debug-Secret',
             in: 'header',
             required: false,
-            schema: { type: 'string', enum: ['true'] },
-            description: 'Set to "true" to enable detailed error logging',
-          },
-          {
-            name: 'X-Log-Errors',
-            in: 'header',
-            required: false,
-            schema: { type: 'string', enum: ['true'] },
-            description: 'Set to "true" to enable detailed error logging',
+            schema: { type: 'string' },
+            description: 'Secret token to enable detailed error logging with stack traces',
           },
         ],
         responses: {
