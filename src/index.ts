@@ -14,21 +14,11 @@ interface RequestMetrics {
   error?: string
 }
 
-// In-memory metrics storage (resets on worker restart)
-const metrics = {
-  startTime: new Date().toISOString(),
-  totalRequests: 0,
-  requestsByPath: {} as Record<string, number>,
-  statusCodes: {} as Record<string, number>,
-  countries: {} as Record<string, number>,
-  errorCount: 0,
-  responseTimes: [] as number[],
-  totalResponseTime: 0
-}
-
 // Environment bindings type
 type Bindings = {
   ANALYTICS?: AnalyticsEngineDataset
+  CLOUDFLARE_API_TOKEN?: string
+  CLOUDFLARE_ACCOUNT_ID?: string
 }
 
 const app = new Hono<{ Bindings: Bindings }>()
@@ -69,27 +59,6 @@ app.use('*', async (c, next) => {
       ip,
       country,
       error
-    }
-    
-    // Update in-memory metrics
-    metrics.totalRequests++
-    metrics.requestsByPath[path] = (metrics.requestsByPath[path] || 0) + 1
-    metrics.statusCodes[String(status)] = (metrics.statusCodes[String(status)] || 0) + 1
-    
-    if (country) {
-      metrics.countries[country] = (metrics.countries[country] || 0) + 1
-    }
-    
-    if (status >= 400) {
-      metrics.errorCount++
-    }
-    
-    metrics.totalResponseTime += duration
-    metrics.responseTimes.push(duration)
-    
-    // Keep only last 1000 response times to avoid memory issues
-    if (metrics.responseTimes.length > 1000) {
-      metrics.responseTimes.shift()
     }
     
     // Log metrics (this will appear in Cloudflare Workers logs)
@@ -414,52 +383,130 @@ app.post('/api/echo', async (c) => {
   })
 })
 
-// Helper function to calculate percentiles
-function calculatePercentile(values: number[], percentile: number): number {
-  if (values.length === 0) return 0
-  const sorted = [...values].sort((a, b) => a - b)
-  const index = Math.ceil((percentile / 100) * sorted.length) - 1
-  return sorted[Math.max(0, index)]
-}
+// Fetch analytics from Cloudflare GraphQL API
+app.get('/api/monitoring/stats', async (c) => {
+  const accountId = c.env?.CLOUDFLARE_ACCOUNT_ID || 'fcd079bec6f835db7cba62fe47adc34c'
+  const apiToken = c.env?.CLOUDFLARE_API_TOKEN
 
-// Monitoring endpoint - shows real-time stats from current worker instance
-app.get('/api/monitoring/stats', (c) => {
-  const avgResponseTime = metrics.totalRequests > 0 
-    ? Math.round(metrics.totalResponseTime / metrics.totalRequests) 
-    : 0
-  
-  const errorRate = metrics.totalRequests > 0
-    ? ((metrics.errorCount / metrics.totalRequests) * 100).toFixed(2) + '%'
-    : '0%'
-  
-  // Get top 5 countries
-  const topCountries = Object.entries(metrics.countries)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5)
-    .reduce((acc, [country, count]) => ({ ...acc, [country]: count }), {})
-  
-  return c.json({
-    message: 'Worker monitoring statistics (current instance)',
-    note: 'These metrics are from the current worker instance and reset on deployment. For historical data, visit Cloudflare Dashboard.',
-    dashboardUrl: 'https://dash.cloudflare.com/fcd079bec6f835db7cba62fe47adc34c/workers/services/view/hono-cloudflare-backend/production/metrics',
-    data: {
-      instanceStartTime: metrics.startTime,
-      uptime: `${Math.round((Date.now() - new Date(metrics.startTime).getTime()) / 1000)}s`,
-      totalRequests: metrics.totalRequests,
-      errorCount: metrics.errorCount,
-      errorRate,
-      averageResponseTime: avgResponseTime,
-      requestsByPath: metrics.requestsByPath,
-      statusCodes: metrics.statusCodes,
-      topCountries,
-      responseTimePercentiles: {
-        p50: calculatePercentile(metrics.responseTimes, 50),
-        p90: calculatePercentile(metrics.responseTimes, 90),
-        p95: calculatePercentile(metrics.responseTimes, 95),
-        p99: calculatePercentile(metrics.responseTimes, 99)
+  if (!apiToken) {
+    return c.json({
+      error: 'CLOUDFLARE_API_TOKEN not configured',
+      message: 'To fetch real-time analytics, add CLOUDFLARE_API_TOKEN to your wrangler.toml [vars] section or environment variables',
+      dashboardUrl: `https://dash.cloudflare.com/${accountId}/workers/services/view/hono-cloudflare-backend/production/metrics`,
+      note: 'Visit the dashboard URL above to view comprehensive analytics'
+    }, 503)
+  }
+
+  try {
+    // Calculate time range (last 24 hours)
+    const now = new Date()
+    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+    
+    const query = `
+      query {
+        viewer {
+          accounts(filter: { accountTag: "${accountId}" }) {
+            workersInvocationsAdaptive(
+              limit: 10000
+              filter: {
+                datetime_geq: "${yesterday.toISOString()}"
+                datetime_leq: "${now.toISOString()}"
+                scriptName: "hono-cloudflare-backend"
+              }
+            ) {
+              sum {
+                requests
+                errors
+                subrequests
+              }
+              quantiles {
+                cpuTimeP50
+                cpuTimeP75
+                cpuTimeP90
+                cpuTimeP99
+              }
+            }
+          }
+        }
       }
+    `
+
+    const response = await fetch('https://api.cloudflare.com/client/v4/graphql', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ query })
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error('Cloudflare API Error:', response.status, errorText)
+      return c.json({
+        error: 'Failed to fetch analytics from Cloudflare',
+        status: response.status,
+        details: errorText,
+        dashboardUrl: `https://dash.cloudflare.com/${accountId}/workers/services/view/hono-cloudflare-backend/production/metrics`
+      }, 502)
     }
-  })
+
+    const data = await response.json() as any
+    
+    if (data.errors) {
+      console.error('GraphQL Errors:', JSON.stringify(data.errors))
+      return c.json({
+        error: 'GraphQL query failed',
+        details: data.errors,
+        dashboardUrl: `https://dash.cloudflare.com/${accountId}/workers/services/view/hono-cloudflare-backend/production/metrics`
+      }, 500)
+    }
+
+    const analytics = data.data?.viewer?.accounts?.[0]?.workersInvocationsAdaptive
+    
+    if (!analytics) {
+      return c.json({
+        message: 'No analytics data available yet',
+        note: 'Analytics data may take a few minutes to appear after deployment',
+        dashboardUrl: `https://dash.cloudflare.com/${accountId}/workers/services/view/hono-cloudflare-backend/production/metrics`
+      })
+    }
+
+    const totalRequests = analytics.sum?.requests || 0
+    const totalErrors = analytics.sum?.errors || 0
+    const errorRate = totalRequests > 0 ? ((totalErrors / totalRequests) * 100).toFixed(2) + '%' : '0%'
+
+    return c.json({
+      message: 'Worker analytics from Cloudflare (last 24 hours)',
+      source: 'Cloudflare GraphQL Analytics API',
+      period: {
+        from: yesterday.toISOString(),
+        to: now.toISOString(),
+        duration: '24 hours'
+      },
+      data: {
+        totalRequests,
+        totalErrors,
+        errorRate,
+        subrequests: analytics.sum?.subrequests || 0,
+        cpuTime: {
+          p50: analytics.quantiles?.cpuTimeP50 || 0,
+          p75: analytics.quantiles?.cpuTimeP75 || 0,
+          p90: analytics.quantiles?.cpuTimeP90 || 0,
+          p99: analytics.quantiles?.cpuTimeP99 || 0
+        }
+      },
+      dashboardUrl: `https://dash.cloudflare.com/${accountId}/workers/services/view/hono-cloudflare-backend/production/metrics`,
+      note: 'For more detailed analytics including country breakdown and status codes, visit the dashboard'
+    })
+  } catch (error) {
+    console.error('Analytics fetch error:', error)
+    return c.json({
+      error: 'Failed to fetch analytics',
+      message: error instanceof Error ? error.message : 'Unknown error',
+      dashboardUrl: `https://dash.cloudflare.com/${accountId}/workers/services/view/hono-cloudflare-backend/production/metrics`
+    }, 500)
+  }
 })
 
 // Test endpoint to trigger an error (for testing error logging)
