@@ -1,12 +1,22 @@
 import { Hono } from 'hono'
 import { swaggerUI } from '@hono/swagger-ui'
-import type { MonitoringData, RequestMetrics } from './metrics'
-export { MetricsCollector } from './metrics'
+
+// Types for monitoring
+interface RequestMetrics {
+  timestamp: string
+  method: string
+  path: string
+  status: number
+  duration: number
+  userAgent?: string
+  ip?: string
+  country?: string
+  error?: string
+}
 
 // Environment bindings type
 type Bindings = {
   ANALYTICS?: AnalyticsEngineDataset
-  METRICS_COLLECTOR: DurableObjectNamespace
 }
 
 const app = new Hono<{ Bindings: Bindings }>()
@@ -59,21 +69,6 @@ app.use('*', async (c, next) => {
         doubles: [duration, status],
         indexes: [timestamp]
       })
-    }
-
-    // Persist metrics to Durable Object for aggregation
-    if (c.env?.METRICS_COLLECTOR) {
-      const id = c.env.METRICS_COLLECTOR.idFromName('global')
-      const stub = c.env.METRICS_COLLECTOR.get(id)
-      try {
-        await stub.fetch('https://metrics/record', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(metrics)
-        })
-      } catch (err) {
-        console.error('METRICS_RECORD_ERROR', err)
-      }
     }
   }
 })
@@ -386,39 +381,33 @@ app.post('/api/echo', async (c) => {
   })
 })
 
-// Monitoring endpoint backed by Durable Object aggregation
-app.get('/api/monitoring/stats', async (c) => {
-  if (!c.env?.METRICS_COLLECTOR) {
-    return c.json({
-      message: 'Metrics collector not configured',
-      data: null
-    }, 503)
-  }
-
-  try {
-    const id = c.env.METRICS_COLLECTOR.idFromName('global')
-    const stub = c.env.METRICS_COLLECTOR.get(id)
-    const res = await stub.fetch('https://metrics/stats')
-
-    if (!res.ok) {
-      const text = await res.text()
-      console.error('METRICS_STATS_ERROR', res.status, text)
-      return c.json({
-        message: 'Failed to retrieve metrics',
-        status: res.status,
-        details: text
-      }, 502)
+// Monitoring endpoint - directs to Cloudflare Dashboard
+app.get('/api/monitoring/stats', (c) => {
+  return c.json({
+    message: 'Worker monitoring statistics',
+    note: 'Real-time metrics are available in your Cloudflare Dashboard',
+    dashboardUrl: 'https://dash.cloudflare.com/fcd079bec6f835db7cba62fe47adc34c/workers/services/view/hono-cloudflare-backend/production/metrics',
+    info: {
+      description: 'Cloudflare provides comprehensive analytics for Workers including:',
+      metrics: [
+        'Total requests',
+        'Request duration (p50, p90, p99)',
+        'Error rate',
+        'CPU time',
+        'Requests by country',
+        'Status codes distribution'
+      ],
+      availability: 'Free plan: Last 24 hours | Paid plans: Up to 30 days with Analytics Engine'
+    },
+    logs: {
+      description: 'Request logs are printed to console and visible in:',
+      locations: [
+        'Cloudflare Dashboard → Workers → Your Worker → Logs',
+        'wrangler tail (real-time log streaming)',
+        'Logpush (paid plans only)'
+      ]
     }
-
-    const payload = (await res.json()) as { message: string; data: MonitoringData }
-    return c.json(payload)
-  } catch (err) {
-    console.error('METRICS_STATS_EXCEPTION', err)
-    return c.json({
-      message: 'Failed to retrieve metrics',
-      error: err instanceof Error ? err.message : 'Unknown error'
-    }, 500)
-  }
+  })
 })
 
 // Test endpoint to trigger an error (for testing error logging)
