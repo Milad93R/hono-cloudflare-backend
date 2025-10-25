@@ -14,6 +14,18 @@ interface RequestMetrics {
   error?: string
 }
 
+// In-memory metrics storage (resets on worker restart)
+const metrics = {
+  startTime: new Date().toISOString(),
+  totalRequests: 0,
+  requestsByPath: {} as Record<string, number>,
+  statusCodes: {} as Record<string, number>,
+  countries: {} as Record<string, number>,
+  errorCount: 0,
+  responseTimes: [] as number[],
+  totalResponseTime: 0
+}
+
 // Environment bindings type
 type Bindings = {
   ANALYTICS?: AnalyticsEngineDataset
@@ -47,7 +59,7 @@ app.use('*', async (c, next) => {
     const duration = Date.now() - startTime
     
     // Create metrics object
-    const metrics: RequestMetrics = {
+    const requestMetrics: RequestMetrics = {
       timestamp,
       method,
       path,
@@ -59,8 +71,29 @@ app.use('*', async (c, next) => {
       error
     }
     
+    // Update in-memory metrics
+    metrics.totalRequests++
+    metrics.requestsByPath[path] = (metrics.requestsByPath[path] || 0) + 1
+    metrics.statusCodes[String(status)] = (metrics.statusCodes[String(status)] || 0) + 1
+    
+    if (country) {
+      metrics.countries[country] = (metrics.countries[country] || 0) + 1
+    }
+    
+    if (status >= 400) {
+      metrics.errorCount++
+    }
+    
+    metrics.totalResponseTime += duration
+    metrics.responseTimes.push(duration)
+    
+    // Keep only last 1000 response times to avoid memory issues
+    if (metrics.responseTimes.length > 1000) {
+      metrics.responseTimes.shift()
+    }
+    
     // Log metrics (this will appear in Cloudflare Workers logs)
-    console.log('REQUEST_METRICS:', JSON.stringify(metrics))
+    console.log('REQUEST_METRICS:', JSON.stringify(requestMetrics))
     
     // Store in Analytics Engine if available (optional)
     if (c.env?.ANALYTICS) {
@@ -381,31 +414,50 @@ app.post('/api/echo', async (c) => {
   })
 })
 
-// Monitoring endpoint - directs to Cloudflare Dashboard
+// Helper function to calculate percentiles
+function calculatePercentile(values: number[], percentile: number): number {
+  if (values.length === 0) return 0
+  const sorted = [...values].sort((a, b) => a - b)
+  const index = Math.ceil((percentile / 100) * sorted.length) - 1
+  return sorted[Math.max(0, index)]
+}
+
+// Monitoring endpoint - shows real-time stats from current worker instance
 app.get('/api/monitoring/stats', (c) => {
+  const avgResponseTime = metrics.totalRequests > 0 
+    ? Math.round(metrics.totalResponseTime / metrics.totalRequests) 
+    : 0
+  
+  const errorRate = metrics.totalRequests > 0
+    ? ((metrics.errorCount / metrics.totalRequests) * 100).toFixed(2) + '%'
+    : '0%'
+  
+  // Get top 5 countries
+  const topCountries = Object.entries(metrics.countries)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .reduce((acc, [country, count]) => ({ ...acc, [country]: count }), {})
+  
   return c.json({
-    message: 'Worker monitoring statistics',
-    note: 'Real-time metrics are available in your Cloudflare Dashboard',
+    message: 'Worker monitoring statistics (current instance)',
+    note: 'These metrics are from the current worker instance and reset on deployment. For historical data, visit Cloudflare Dashboard.',
     dashboardUrl: 'https://dash.cloudflare.com/fcd079bec6f835db7cba62fe47adc34c/workers/services/view/hono-cloudflare-backend/production/metrics',
-    info: {
-      description: 'Cloudflare provides comprehensive analytics for Workers including:',
-      metrics: [
-        'Total requests',
-        'Request duration (p50, p90, p99)',
-        'Error rate',
-        'CPU time',
-        'Requests by country',
-        'Status codes distribution'
-      ],
-      availability: 'Free plan: Last 24 hours | Paid plans: Up to 30 days with Analytics Engine'
-    },
-    logs: {
-      description: 'Request logs are printed to console and visible in:',
-      locations: [
-        'Cloudflare Dashboard → Workers → Your Worker → Logs',
-        'wrangler tail (real-time log streaming)',
-        'Logpush (paid plans only)'
-      ]
+    data: {
+      instanceStartTime: metrics.startTime,
+      uptime: `${Math.round((Date.now() - new Date(metrics.startTime).getTime()) / 1000)}s`,
+      totalRequests: metrics.totalRequests,
+      errorCount: metrics.errorCount,
+      errorRate,
+      averageResponseTime: avgResponseTime,
+      requestsByPath: metrics.requestsByPath,
+      statusCodes: metrics.statusCodes,
+      topCountries,
+      responseTimePercentiles: {
+        p50: calculatePercentile(metrics.responseTimes, 50),
+        p90: calculatePercentile(metrics.responseTimes, 90),
+        p95: calculatePercentile(metrics.responseTimes, 95),
+        p99: calculatePercentile(metrics.responseTimes, 99)
+      }
     }
   })
 })
