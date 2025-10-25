@@ -461,6 +461,7 @@ app.get('/api/healthchecker', async (c) => {
     if (currentInterval > lastInterval && elapsed < 45000) {
       console.log(`Health check at ${elapsed}ms (crossed ${currentInterval * 15}s boundary)`)
       const result = await checkHealth()
+      console.log(`Health check result:`, JSON.stringify(result))
       results.push({ time: elapsed, ...result })
       lastCheckAt = elapsed
     }
@@ -469,6 +470,7 @@ app.get('/api/healthchecker', async (c) => {
   // Final check after 45 seconds
   console.log('Final health check at 45s')
   const finalResult = await checkHealth()
+  console.log(`Final health check result:`, JSON.stringify(finalResult))
   results.push({ time: 45000, ...finalResult })
   
   return c.json({
@@ -492,21 +494,23 @@ const scheduled = async (event: ScheduledEvent, env: Bindings, ctx: ExecutionCon
   console.log('Cron job triggered at:', new Date(event.scheduledTime).toISOString())
   
   try {
-    // Determine the base URL for the worker
-    const workerUrl = `https://hono-cloudflare-backend.mrashidikhah32.workers.dev`
-    const healthCheckerUrl = `${workerUrl}/api/healthchecker`
+    console.log('Starting health checker cycle from cron')
     
-    console.log('Calling health checker endpoint:', healthCheckerUrl)
-    
-    // Call the health checker endpoint
-    const response = await fetch(healthCheckerUrl, {
+    // Create internal request to health checker endpoint
+    const healthCheckerRequest = new Request('http://internal/api/healthchecker', {
+      method: 'GET',
       headers: {
         'X-API-Key': env.API_KEY || ''
       }
     })
     
-    const result = await response.json()
-    console.log('Health checker result:', JSON.stringify(result))
+    // Call the health checker internally
+    const response = await app.fetch(healthCheckerRequest, env)
+    const result = await response.json() as any
+    
+    console.log('Health checker cycle completed')
+    console.log('Total checks:', result.totalChecks)
+    console.log('Results summary:', JSON.stringify(result.results))
   } catch (error) {
     console.error('Cron job error:', error instanceof Error ? error.message : 'Unknown error')
   }
