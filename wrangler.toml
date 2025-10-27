@@ -40,4 +40,4 @@ enabled = true
 
 # Cron triggers
 [triggers]
-crons = ["* * 0 * *"]  # Run every day at 00:00
+crons = ["0 0 * * *"]  # Run every day at 00:00 UTC
