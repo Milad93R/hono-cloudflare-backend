@@ -18,6 +18,7 @@ export type Bindings = {
   API_KEY?: string
   SWAGGER_USERNAME?: string
   SWAGGER_PASSWORD?: string
+  TELEGRAM_BOT_TOKEN?: string
 }
 
 // Context variables type
