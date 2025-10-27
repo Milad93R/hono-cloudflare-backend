@@ -20,6 +20,9 @@ export type Bindings = {
   SWAGGER_PASSWORD?: string
   TELEGRAM_BOT_TOKEN?: string
   MONGODB_URI?: string
+  MONGODB_DATA_API_KEY?: string
+  MONGODB_DATA_API_URL?: string
+  MONGODB_DATABASE?: string
 }
 
 // Context variables type

@@ -1,6 +1,6 @@
 import { Context } from 'hono'
 import { Bindings, Variables } from '../types'
-import { MongoDBService } from '../services/mongodb.service'
+import { MongooseService } from '../services/mongoose.service'
 
 export class MongoDBController {
   /**
@@ -9,7 +9,7 @@ export class MongoDBController {
    */
   async listCollections(c: Context<{ Bindings: Bindings; Variables: Variables }>) {
     try {
-      const mongoService = new MongoDBService(c.env)
+      const mongoService = new MongooseService(c.env)
       const collections = await mongoService.listCollections()
 
       return c.json({
@@ -66,7 +66,7 @@ export class MongoDBController {
       const collection = c.req.param('collection')
       const id = c.req.param('id')
       
-      const mongoService = new MongoDBService(c.env)
+      const mongoService = new MongooseService(c.env)
       const document = await mongoService.findById(collection, id)
 
       if (!document) {
@@ -102,7 +102,7 @@ export class MongoDBController {
       const collection = c.req.param('collection')
       const body = await c.req.json()
       
-      const mongoService = new MongoDBService(c.env)
+      const mongoService = new MongooseService(c.env)
       const result = await mongoService.insertOne(collection, body)
 
       return c.json({
@@ -131,7 +131,7 @@ export class MongoDBController {
       const id = c.req.param('id')
       const body = await c.req.json()
       
-      const mongoService = new MongoDBService(c.env)
+      const mongoService = new MongooseService(c.env)
       const result = await mongoService.updateById(collection, id, body)
 
       if (result.modifiedCount === 0) {
@@ -169,7 +169,7 @@ export class MongoDBController {
       const collection = c.req.param('collection')
       const id = c.req.param('id')
       
-      const mongoService = new MongoDBService(c.env)
+      const mongoService = new MongooseService(c.env)
       const result = await mongoService.deleteById(collection, id)
 
       if (result.deletedCount === 0) {
