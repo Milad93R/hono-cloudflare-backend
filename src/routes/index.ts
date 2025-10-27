@@ -4,6 +4,7 @@ import { HealthController } from '../controllers/health.controller'
 import { TestController } from '../controllers/test.controller'
 import { DocsController } from '../controllers/docs.controller'
 import { TelegramController } from '../controllers/telegram.controller'
+import { MongoDBController } from '../controllers/mongodb.controller'
 import { HealthService } from '../services/health.service'
 import { withDebugLogs } from '../middleware/debug.middleware'
 import { swaggerAuth } from '../middleware/auth.middleware'
@@ -17,6 +18,7 @@ export function registerRoutes(app: Hono<{ Bindings: Bindings; Variables: Variab
   const testController = new TestController()
   const docsController = new DocsController()
   const telegramController = new TelegramController()
+  const mongodbController = new MongoDBController()
 
   // Root endpoint
   app.get('/', (c) => {
@@ -38,6 +40,15 @@ export function registerRoutes(app: Hono<{ Bindings: Bindings; Variables: Variab
   app.post('/api/telegram/send', (c) => telegramController.sendMessage(c))
   app.post('/api/telegram/log', (c) => telegramController.sendLog(c))
   app.get('/api/telegram/threads', (c) => telegramController.getThreads(c))
+
+  // MongoDB endpoints
+  app.get('/api/mongodb/collections', (c) => mongodbController.listCollections(c))
+  app.get('/api/mongodb/:collection', (c) => mongodbController.getDocuments(c))
+  app.get('/api/mongodb/:collection/:id', (c) => mongodbController.getDocumentById(c))
+  app.post('/api/mongodb/:collection', (c) => mongodbController.createDocument(c))
+  app.put('/api/mongodb/:collection/:id', (c) => mongodbController.updateDocument(c))
+  app.delete('/api/mongodb/:collection/:id', (c) => mongodbController.deleteDocument(c))
+  app.post('/api/mongodb/:collection/query', (c) => mongodbController.queryDocuments(c))
 
   // Documentation endpoints
   app.get('/openapi.json', (c) => docsController.getOpenAPISpec(c))

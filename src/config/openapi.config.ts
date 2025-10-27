@@ -16,6 +16,7 @@ export const openAPISpec = {
     { name: 'Health', description: 'Health check and monitoring endpoints' },
     { name: 'Testing', description: 'Endpoints used for testing and debugging' },
     { name: 'Telegram', description: 'Telegram messaging integration endpoints' },
+    { name: 'MongoDB', description: 'MongoDB database operations' },
   ],
   components: {
     securitySchemes: {
@@ -323,6 +324,310 @@ export const openAPISpec = {
               'application/json': {
                 schema: {
                   $ref: '#/components/schemas/TelegramThreadsResponse'
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    '/api/mongodb/collections': {
+      get: {
+        tags: ['MongoDB'],
+        summary: 'List all collections',
+        description: 'Returns all collections in the MongoDB database.',
+        responses: {
+          '200': {
+            description: 'List of collections',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    collections: { type: 'array', items: { type: 'string' } },
+                    count: { type: 'integer' },
+                    timestamp: { type: 'string', format: 'date-time' }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    '/api/mongodb/{collection}': {
+      get: {
+        tags: ['MongoDB'],
+        summary: 'Get all documents',
+        description: 'Get all documents from a collection with optional limit.',
+        parameters: [
+          {
+            name: 'collection',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' },
+            description: 'Collection name'
+          },
+          {
+            name: 'limit',
+            in: 'query',
+            schema: { type: 'integer', default: 100 },
+            description: 'Maximum number of documents to return'
+          }
+        ],
+        responses: {
+          '200': {
+            description: 'List of documents',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    collection: { type: 'string' },
+                    documents: { type: 'array', items: { type: 'object' } },
+                    returned: { type: 'integer' },
+                    total: { type: 'integer' },
+                    timestamp: { type: 'string', format: 'date-time' }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      post: {
+        tags: ['MongoDB'],
+        summary: 'Create document',
+        description: 'Insert a new document into a collection.',
+        parameters: [
+          {
+            name: 'collection',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' },
+            description: 'Collection name'
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                description: 'Document data to insert'
+              }
+            }
+          }
+        },
+        responses: {
+          '201': {
+            description: 'Document created',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    message: { type: 'string' },
+                    collection: { type: 'string' },
+                    insertedId: { type: 'string' },
+                    timestamp: { type: 'string', format: 'date-time' }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    '/api/mongodb/{collection}/{id}': {
+      get: {
+        tags: ['MongoDB'],
+        summary: 'Get document by ID',
+        description: 'Get a specific document by its MongoDB ObjectId.',
+        parameters: [
+          {
+            name: 'collection',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' },
+            description: 'Collection name'
+          },
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' },
+            description: 'MongoDB ObjectId'
+          }
+        ],
+        responses: {
+          '200': {
+            description: 'Document found',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    collection: { type: 'string' },
+                    document: { type: 'object' },
+                    timestamp: { type: 'string', format: 'date-time' }
+                  }
+                }
+              }
+            }
+          },
+          '404': {
+            description: 'Document not found'
+          }
+        }
+      },
+      put: {
+        tags: ['MongoDB'],
+        summary: 'Update document',
+        description: 'Update a document by its ID.',
+        parameters: [
+          {
+            name: 'collection',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' },
+            description: 'Collection name'
+          },
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' },
+            description: 'MongoDB ObjectId'
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                description: 'Fields to update'
+              }
+            }
+          }
+        },
+        responses: {
+          '200': {
+            description: 'Document updated',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    message: { type: 'string' },
+                    collection: { type: 'string' },
+                    id: { type: 'string' },
+                    modifiedCount: { type: 'integer' },
+                    timestamp: { type: 'string', format: 'date-time' }
+                  }
+                }
+              }
+            }
+          },
+          '404': {
+            description: 'Document not found'
+          }
+        }
+      },
+      delete: {
+        tags: ['MongoDB'],
+        summary: 'Delete document',
+        description: 'Delete a document by its ID.',
+        parameters: [
+          {
+            name: 'collection',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' },
+            description: 'Collection name'
+          },
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' },
+            description: 'MongoDB ObjectId'
+          }
+        ],
+        responses: {
+          '200': {
+            description: 'Document deleted',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    message: { type: 'string' },
+                    collection: { type: 'string' },
+                    id: { type: 'string' },
+                    deletedCount: { type: 'integer' },
+                    timestamp: { type: 'string', format: 'date-time' }
+                  }
+                }
+              }
+            }
+          },
+          '404': {
+            description: 'Document not found'
+          }
+        }
+      }
+    },
+    '/api/mongodb/{collection}/query': {
+      post: {
+        tags: ['MongoDB'],
+        summary: 'Query documents',
+        description: 'Query documents with a custom MongoDB filter.',
+        parameters: [
+          {
+            name: 'collection',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' },
+            description: 'Collection name'
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  query: {
+                    type: 'object',
+                    description: 'MongoDB query filter'
+                  },
+                  limit: {
+                    type: 'integer',
+                    default: 100,
+                    description: 'Maximum number of documents'
+                  }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          '200': {
+            description: 'Query results',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    collection: { type: 'string' },
+                    query: { type: 'object' },
+                    documents: { type: 'array', items: { type: 'object' } },
+                    count: { type: 'integer' },
+                    timestamp: { type: 'string', format: 'date-time' }
+                  }
                 }
               }
             }
