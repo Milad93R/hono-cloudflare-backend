@@ -1,6 +1,10 @@
 import { MongoClient, Db, Collection, ObjectId, Document } from 'mongodb'
 import { Bindings } from '../types'
 
+// Global connection cache to reuse across requests
+let cachedClient: MongoClient | null = null
+let cachedDb: Db | null = null
+
 export class MongoDBService {
   private client: MongoClient | null = null
   private db: Db | null = null
@@ -11,21 +15,45 @@ export class MongoDBService {
   }
 
   /**
-   * Connect to MongoDB
+   * Connect to MongoDB with connection pooling
    */
   async connect(): Promise<void> {
     if (!this.mongoUri) {
       throw new Error('MONGODB_URI is not configured')
     }
 
-    if (this.client) {
-      return // Already connected
+    // Reuse cached connection if available
+    if (cachedClient && cachedDb) {
+      this.client = cachedClient
+      this.db = cachedDb
+      console.log('Reusing cached MongoDB connection')
+      return
+    }
+
+    if (this.client && this.db) {
+      return // Already connected in this instance
     }
 
     try {
-      this.client = new MongoClient(this.mongoUri)
+      console.log('Creating new MongoDB connection')
+      
+      // Configure client with optimized settings for Cloudflare Workers
+      this.client = new MongoClient(this.mongoUri, {
+        maxPoolSize: 1, // Minimize connections
+        minPoolSize: 0,
+        maxIdleTimeMS: 10000,
+        serverSelectionTimeoutMS: 5000,
+        socketTimeoutMS: 5000,
+        connectTimeoutMS: 5000,
+      })
+      
       await this.client.connect()
-      this.db = this.client.db() // Uses default database from connection string
+      this.db = this.client.db()
+      
+      // Cache the connection for reuse
+      cachedClient = this.client
+      cachedDb = this.db
+      
       console.log('Successfully connected to MongoDB')
     } catch (error) {
       console.error('MongoDB connection error:', error)
@@ -145,14 +173,11 @@ export class MongoDBService {
   }
 
   /**
-   * Close connection
+   * Close connection (not recommended in Workers - let connection pool handle it)
    */
   async close(): Promise<void> {
-    if (this.client) {
-      await this.client.close()
-      this.client = null
-      this.db = null
-      console.log('MongoDB connection closed')
-    }
+    // Don't close the connection in Cloudflare Workers
+    // Let the connection pool manage it
+    console.log('Connection close skipped (using connection pool)')
   }
 }

@@ -11,7 +11,6 @@ export class MongoDBController {
     try {
       const mongoService = new MongoDBService(c.env)
       const collections = await mongoService.listCollections()
-      await mongoService.close()
 
       return c.json({
         collections,
@@ -40,7 +39,6 @@ export class MongoDBController {
       const mongoService = new MongoDBService(c.env)
       const documents = await mongoService.find(collection, {}, limit)
       const count = await mongoService.count(collection)
-      await mongoService.close()
 
       return c.json({
         collection,
@@ -70,7 +68,6 @@ export class MongoDBController {
       
       const mongoService = new MongoDBService(c.env)
       const document = await mongoService.findById(collection, id)
-      await mongoService.close()
 
       if (!document) {
         return c.json({
@@ -107,7 +104,6 @@ export class MongoDBController {
       
       const mongoService = new MongoDBService(c.env)
       const result = await mongoService.insertOne(collection, body)
-      await mongoService.close()
 
       return c.json({
         message: 'Document created',
@@ -137,7 +133,6 @@ export class MongoDBController {
       
       const mongoService = new MongoDBService(c.env)
       const result = await mongoService.updateById(collection, id, body)
-      await mongoService.close()
 
       if (result.modifiedCount === 0) {
         return c.json({
@@ -176,7 +171,6 @@ export class MongoDBController {
       
       const mongoService = new MongoDBService(c.env)
       const result = await mongoService.deleteById(collection, id)
-      await mongoService.close()
 
       if (result.deletedCount === 0) {
         return c.json({
@@ -217,7 +211,6 @@ export class MongoDBController {
       
       const mongoService = new MongoDBService(c.env)
       const documents = await mongoService.find(collection, query, limit)
-      await mongoService.close()
 
       return c.json({
         collection,
