@@ -4,11 +4,12 @@ A simple Hono backend with TypeScript configured for Cloudflare Workers with aut
 
 ## Features
 
-- 🚀 **Hono Framework** - Fast, lightweight web framework
-- 📘 **TypeScript** - Full type safety
-- ☁️ **Cloudflare Workers** - Edge computing platform
-- 🔄 **Auto Deployment** - GitHub Actions CI/CD
-- 🧪 **API Endpoints** - RESTful API with JSON responses
+- **Hono Framework** - Fast, lightweight web framework
+- **TypeScript** - Full type safety
+- **Cloudflare Workers** - Edge computing platform
+- **Auto Deployment** - GitHub Actions CI/CD
+- **API Endpoints** - RESTful API with JSON responses
+- **Telegram Integration** - Send messages and logs to Telegram group threads
 
 ## API Endpoints
 
@@ -16,6 +17,9 @@ A simple Hono backend with TypeScript configured for Cloudflare Workers with aut
 - `GET /health` - Health check endpoint
 - `GET /api/hello/:name` - Parameterized greeting
 - `POST /api/echo` - Echo service for testing
+- `POST /api/telegram/send` - Send message to Telegram threads
+- `POST /api/telegram/log` - Send formatted log to Telegram threads
+- `GET /api/telegram/threads` - List available Telegram thread IDs
 
 ## Development
 
@@ -33,12 +37,18 @@ A simple Hono backend with TypeScript configured for Cloudflare Workers with aut
    npm install
    ```
 
-3. Start development server:
+3. (Optional) Set Telegram bot token for local testing:
+   ```bash
+   npx wrangler secret put TELEGRAM_BOT_TOKEN
+   # Enter: 7654235762:AAHzRXegiy-VngSOFuHb5hxpuDSEJ7cwm_I
+   ```
+
+4. Start development server:
    ```bash
    npm run dev
    ```
 
-4. The server will be available at `http://127.0.0.1:8787`
+5. The server will be available at `http://127.0.0.1:8787`
 
 ### Available Scripts
 
@@ -130,6 +140,27 @@ MY_VARIABLE = "production_value"
 
 Uncomment and configure the relevant sections in `wrangler.toml` as needed.
 
+### Worker Secrets
+
+The following secrets must be configured for full functionality:
+
+| Secret | Description |
+|--------|-------------|
+| `API_KEY` | Required header `X-API-Key` for protected endpoints |
+| `DEBUG_SECRET` | Enables debug log capture/response via `X-Debug-Secret` |
+| `SWAGGER_USERNAME` / `SWAGGER_PASSWORD` | Basic auth credentials for `/docs` |
+| `TELEGRAM_BOT_TOKEN` | Bot token for Telegram integration (optional) |
+
+Configure them with:
+
+```bash
+wrangler secret put API_KEY
+wrangler secret put DEBUG_SECRET
+wrangler secret put SWAGGER_USERNAME
+wrangler secret put SWAGGER_PASSWORD
+wrangler secret put TELEGRAM_BOT_TOKEN
+```
+
 ## Contributing
 
 1. Fork the repository
@@ -139,6 +170,11 @@ Uncomment and configure the relevant sections in `wrangler.toml` as needed.
 5. Create a pull request
 
 The GitHub Actions workflow will automatically test your changes on pull requests.
+
+## Additional Documentation
+
+- `TELEGRAM.md` - Complete Telegram integration guide
+- `SETUP_TELEGRAM.md` - Step-by-step setup instructions
 
 ## License
 
