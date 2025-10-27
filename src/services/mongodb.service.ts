@@ -45,7 +45,7 @@ export class MongoDBService {
         serverSelectionTimeoutMS: 5000,
         socketTimeoutMS: 5000,
         connectTimeoutMS: 5000,
-      })
+      } as any)
       
       await this.client.connect()
       this.db = this.client.db()
