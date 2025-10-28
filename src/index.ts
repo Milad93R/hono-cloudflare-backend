@@ -16,7 +16,6 @@ const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 app.use('*', logCapture)
 app.use('*', monitoring)
 app.use('*', cors())
-app.use('*', errorHandler)
 app.use('/api/*', apiKeyAuth)
 
 // Register all routes
@@ -25,14 +24,8 @@ registerRoutes(app)
 // Global error handler
 app.onError(errorHandler)
 
-// Export for Vercel
-export default handle(app)
-
-// Also export app for local development
+// Export app for Vercel API route
 export { app }
 
-// Export handlers
-export {
-  fetch: app.fetch,
-  scheduled: createScheduledHandler(app)
-}
+// Export Vercel handler as default
+export default handle(app)
