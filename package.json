@@ -20,8 +20,9 @@
   "description": "A simple Hono backend configured for Cloudflare Workers",
   "dependencies": {
     "@hono/swagger-ui": "^0.5.2",
+    "@vercel/node": "^5.5.0",
     "hono": "^4.10.2",
-    "mongoose": "^8.19.2"
+    "mongodb": "^6.20.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20251014.0",
