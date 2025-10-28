@@ -19,8 +19,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       socketTimeoutMS: 10000,
     })
     
+    const db = mongoose.connection.db
+    if (!db) {
+      throw new Error('Database connection not initialized')
+    }
+    
     // List collections
-    const collections = await mongoose.connection.db.listCollections().toArray()
+    const collections = await db.listCollections().toArray()
     
     // Close connection
     await mongoose.connection.close()
