@@ -37,14 +37,17 @@ export class MongoDBService {
     try {
       console.log('Creating new MongoDB connection')
       
-      // Configure client with optimized settings for Cloudflare Workers
+      // Configure client with optimized settings for Vercel serverless
       this.client = new MongoClient(this.mongoUri, {
-        maxPoolSize: 1, // Minimize connections
+        maxPoolSize: 1,
         minPoolSize: 0,
         maxIdleTimeMS: 10000,
         serverSelectionTimeoutMS: 5000,
         socketTimeoutMS: 5000,
         connectTimeoutMS: 5000,
+        tls: true,
+        tlsAllowInvalidCertificates: false,
+        tlsAllowInvalidHostnames: false,
       } as any)
       
       await this.client.connect()
